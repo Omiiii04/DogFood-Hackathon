@@ -28,12 +28,49 @@ def test_normalization_worked_example_neutralizes_evaluator_bias():
 
     standings_map = {s.submission_id: s for s in response.standings}
 
-    # Proj1 and Proj3 have identical relative standing to their respective judges
-    assert standings_map["Proj1"].normalized_score == standings_map["Proj3"].normalized_score
-    # Proj2 and Proj4 have identical relative standing to their respective judges
-    assert standings_map["Proj2"].normalized_score == standings_map["Proj4"].normalized_score
-    # Both top projects beat bottom projects
-    assert standings_map["Proj1"].normalized_score > standings_map["Proj2"].normalized_score
+    assert set(standings_map) == {"Proj1", "Proj2", "Proj3", "Proj4"}
+    assert all(
+        np.isfinite((standing.normalized_score, standing.z_score_mean)).all()
+        for standing in standings_map.values()
+    )
+
+    # Bayesian shrinkage changes the judge centers, so equal within-judge
+    # relative positions do not imply equal calibrated values across judges.
+    assert standings_map["Proj1"].normalized_score != pytest.approx(
+        standings_map["Proj3"].normalized_score
+    )
+
+    calibration_map = {metric.judge_id: metric for metric in response.judge_calibrations}
+    assert calibration_map["JudgeA"].bayesian_shrunk_mean == pytest.approx(5.35)
+    assert calibration_map["JudgeB"].bayesian_shrunk_mean == pytest.approx(7.15)
+
+    expected_normalized_scores = {
+        "Proj1": 46.37,
+        "Proj2": 0.0,
+        "Proj3": 100.0,
+        "Proj4": 75.4,
+    }
+    expected_z_score_means = {
+        "Proj1": -0.1513,
+        "Proj2": -1.0160,
+        "Proj3": 0.8488,
+        "Proj4": 0.3900,
+    }
+    for submission_id, expected_score in expected_normalized_scores.items():
+        standing = standings_map[submission_id]
+        assert 0.0 <= standing.normalized_score <= 100.0
+        assert standing.normalized_score == pytest.approx(expected_score, abs=0.01)
+        assert standing.z_score_mean == pytest.approx(
+            expected_z_score_means[submission_id], abs=0.0001
+        )
+
+    assert [standing.submission_id for standing in response.standings] == [
+        "Proj3",
+        "Proj4",
+        "Proj1",
+        "Proj2",
+    ]
+    assert [standing.rank for standing in response.standings] == [1, 2, 3, 4]
 
 def test_empty_scores_handling():
     response = run_normalization([])
