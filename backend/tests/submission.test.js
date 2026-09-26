@@ -168,6 +168,13 @@ describe('Submission Model Schema and Validation Unit Tests', () => {
     expect(teamPath.options.ref).toBe('Team');
   });
 
+  it('should verify schema indexes include compound text index on title, tagline, and track', () => {
+    const indexes = Submission.schema.indexes();
+    const textIndex = indexes.find(([fields]) => fields.title === 'text');
+    expect(textIndex).toBeDefined();
+    expect(textIndex[0]).toEqual({ title: 'text', tagline: 'text', track: 'text' });
+  });
+
   it('should automatically set submittedAt in pre-save hook when transitioning to submitted status', async () => {
     const sub = new Submission({
       team: dummyTeamId,

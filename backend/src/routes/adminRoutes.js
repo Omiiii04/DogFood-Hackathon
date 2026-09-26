@@ -14,4 +14,12 @@ router.get('/export/csv', adminController.exportCSV);
 router.get('/audit-logs', adminController.getAuditLogs);
 router.get('/stats', adminController.getSystemStats);
 
+// Rubrics configuration & locking
+router.post('/rubrics', adminController.upsertRubric);
+router.get('/rubrics', adminController.getRubric);
+router.post('/rubric', adminController.upsertRubric);
+router.get('/rubric', adminController.getRubric);
+router.post('/events/lock-rubric', adminController.lockRubric);
+router.post('/lock-rubric', adminController.lockRubric);
+
 module.exports = router;

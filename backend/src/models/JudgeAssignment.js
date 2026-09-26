@@ -7,12 +7,14 @@ const JudgeAssignmentSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
       index: true,
+      alias: 'judge',
     },
     submissionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Submission',
       required: true,
       index: true,
+      alias: 'submission',
     },
     track: {
       type: String,
@@ -20,8 +22,8 @@ const JudgeAssignmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'completed'],
-      default: 'pending',
+      enum: ['assigned', 'in_progress', 'completed', 'pending'],
+      default: 'assigned',
       index: true,
     },
   },
@@ -29,6 +31,12 @@ const JudgeAssignmentSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+JudgeAssignmentSchema.pre('validate', function (next) {
+  if (this.judge && !this.judgeId) this.judgeId = this.judge;
+  if (this.submission && !this.submissionId) this.submissionId = this.submission;
+  next();
+});
 
 JudgeAssignmentSchema.index({ judgeId: 1, submissionId: 1 }, { unique: true });
 

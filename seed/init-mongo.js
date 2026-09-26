@@ -249,6 +249,9 @@ const submission2 = db.submissions.insertOne({
   updatedAt: new Date()
 }).insertedId;
 
+// Text search index on title, tagline, and track
+db.submissions.createIndex({ title: "text", tagline: "text", track: "text" });
+
 // 5. Create Initial Judge Assignments
 db.judgeassignments.insertOne({
   judgeId: judgeAi,

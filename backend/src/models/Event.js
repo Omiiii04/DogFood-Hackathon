@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const RubricCriterionSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    weight: { type: Number, required: true, min: 0.05, max: 0.8 },
+    weight: { type: Number, required: true, min: 0, max: 1 },
     scaleMin: { type: Number, default: 1 },
     scaleMax: { type: Number, default: 10 },
   },

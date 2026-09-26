@@ -36,6 +36,11 @@ const UserSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    mentoredTeams: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: 'Team',
+      default: [],
+    },
     teamId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Team',

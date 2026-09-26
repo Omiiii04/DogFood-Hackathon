@@ -136,7 +136,7 @@ export const SubmissionEditor = () => {
 
     setFinalizing(true);
     try {
-      await api.post('/submissions', {
+      const saveRes = await api.post('/submissions', {
         title,
         tagline,
         repoUrl,
@@ -145,7 +145,10 @@ export const SubmissionEditor = () => {
         thumbnailPath,
       });
 
-      const res = await api.post('/submissions/finalize');
+      const submissionId = saveRes?.data?.submission?._id;
+      const res = submissionId
+        ? await api.post(`/submissions/${submissionId}/finalize`)
+        : await api.post('/submissions/finalize');
       if (res.success) {
         setStatus('submitted');
         localStorage.removeItem(DRAFT_KEY);
