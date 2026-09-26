@@ -351,8 +351,13 @@ def run_normalization(scores: List[JudgeScoreEntry], bayesian_prior_k: float = 3
         "raw_score": float(s.raw_composite_score)
     } for s in scores])
 
-    # Global population mean
+    # Global statistics
     mu_global = float(df["raw_score"].mean())
+    global_variance = (
+        float(np.var(df["raw_score"], ddof=1))
+        if len(df) > 1
+        else 0.0
+    )
 
     # Calculate per-judge parameters
     judge_stats = {}
@@ -361,31 +366,35 @@ def run_normalization(scores: List[JudgeScoreEntry], bayesian_prior_k: float = 3
     for judge_id, group in df.groupby("judge_id"):
         n_j = len(group)
         mu_j = float(group["raw_score"].mean())
-        # std with small epsilon
-        std_j = float(np.std(group["raw_score"]))
-        if std_j < 1e-6:
-            std_j = 1.0 # fallback when all scores identical to prevent division by zero
-
         # Empirical Bayesian Shrinkage
-        if n_j < 5:
-            weight_empirical = n_j / (n_j + bayesian_prior_k)
-            weight_prior = bayesian_prior_k / (n_j + bayesian_prior_k)
-            mu_shrunk = (weight_empirical * mu_j) + (weight_prior * mu_global)
-        else:
-            mu_shrunk = mu_j
+        mu_shrunk = calculate_shrunk_mean(
+            mu_j, n_j, mu_global, prior_k=bayesian_prior_k
+        )
+        raw_std = (
+            float(np.std(group["raw_score"], ddof=1))
+            if n_j > 1
+            else 0.0
+        )
+        raw_variance = raw_std**2
+        weight_empirical = n_j / (n_j + bayesian_prior_k)
+        weight_prior = bayesian_prior_k / (n_j + bayesian_prior_k)
+        shrunk_std = float(np.sqrt(
+            weight_empirical * raw_variance
+            + weight_prior * global_variance
+        ))
 
         judge_stats[judge_id] = {
             "n_j": n_j,
             "mu_j": mu_j,
-            "std_j": std_j,
-            "mu_shrunk": mu_shrunk
+            "mu_shrunk": mu_shrunk,
+            "shrunk_std": shrunk_std,
         }
 
         judge_calibrations.append(JudgeCalibrationMetric(
             judge_id=str(judge_id),
             sample_size=n_j,
             raw_mean=round(mu_j, 3),
-            raw_std=round(std_j, 3),
+            raw_std=round(raw_std, 3),
             bayesian_shrunk_mean=round(mu_shrunk, 3)
         ))
 
@@ -394,7 +403,9 @@ def run_normalization(scores: List[JudgeScoreEntry], bayesian_prior_k: float = 3
     for _, row in df.iterrows():
         j_id = row["judge_id"]
         stats = judge_stats[j_id]
-        z_ij = (row["raw_score"] - stats["mu_shrunk"]) / stats["std_j"]
+        z_ij = (
+            row["raw_score"] - stats["mu_shrunk"]
+        ) / (stats["shrunk_std"] + Z_SCORE_EPSILON)
         z_scores.append(z_ij)
 
     df["z_score"] = z_scores
