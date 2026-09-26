@@ -26,12 +26,11 @@ router.post(
   judgingController.submitScore
 );
 
-// Inspect score (enforced by score ownership isolation guard)
+// Inspect score (returns only authenticated judge's own ballot; strips all competitor scores)
 router.get(
-  '/scores/:scoreId',
+  '/scores/:submissionId',
   roleGuard('judge', 'organizer', 'admin'),
-  verifyScoreOwnership,
-  judgingController.getScoreById
+  judgingController.getScoreBySubmissionId
 );
 
 module.exports = router;

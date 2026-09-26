@@ -328,5 +328,215 @@ describe('Score Model & isolationGuard Middleware Tests', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.rubric).toBeDefined();
     });
+
+    it('GET /api/v1/judging/assigned should return ONLY submissions assigned to req.user.id and attach only own scores', async () => {
+      const assignedSub1 = {
+        _id: dummySubmissionId,
+        title: 'Assigned Project 1',
+        tagline: 'Tagline 1',
+      };
+      const assignedSub2 = {
+        _id: dummyOtherSubId,
+        title: 'Assigned Project 2',
+        tagline: 'Tagline 2',
+      };
+
+      const mockAssignments = [
+        {
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: assignedSub1,
+          track: 'AI/ML',
+          status: 'assigned',
+        },
+        {
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: assignedSub2,
+          track: 'AI/ML',
+          status: 'completed',
+        },
+      ];
+
+      const mockFindQuery = {
+        populate: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockResolvedValue(mockAssignments),
+      };
+      jest.spyOn(JudgeAssignment, 'find').mockReturnValue(mockFindQuery);
+
+      // Suppose Judge has evaluated assignedSub2, and competitor Judge B has also evaluated assignedSub1 & assignedSub2
+      const ownScore = {
+        _id: new mongoose.Types.ObjectId(),
+        judge: dummyJudgeId,
+        submission: dummyOtherSubId,
+        rawCompositeScore: 9.0,
+      };
+      jest.spyOn(Score, 'find').mockResolvedValue([ownScore]);
+
+      const res = await request(app)
+        .get('/api/v1/judging/assigned')
+        .set('Authorization', `Bearer ${judgeToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.queue).toHaveLength(2);
+      expect(res.body.data.submissions).toHaveLength(2);
+
+      // Verify that query was strictly filtered by req.user.id
+      expect(JudgeAssignment.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          $or: [{ judgeId: dummyJudgeId.toString() }, { judge: dummyJudgeId.toString() }],
+        })
+      );
+
+      // Verify scores attached: assignedSub1 has null score, assignedSub2 has ownScore
+      expect(res.body.data.queue[0].score).toBeNull();
+      expect(res.body.data.queue[1].score).toBeDefined();
+      expect(res.body.data.queue[1].score.rawCompositeScore).toBe(9.0);
+    });
+
+    it('GET /api/v1/judging/scores/:submissionId should return 403 Forbidden when judge is unassigned to submission', async () => {
+      jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue(null);
+
+      const res = await request(app)
+        .get(`/api/v1/judging/scores/${dummySubmissionId.toString()}`)
+        .set('Authorization', `Bearer ${judgeToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBe('Access Denied: You are not assigned to evaluate this project');
+    });
+
+    it('GET /api/v1/judging/scores/:submissionId should return 404 when judge is assigned but has not scored yet (strips competitor scores)', async () => {
+      // Judge is assigned to submission
+      jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+        _id: new mongoose.Types.ObjectId(),
+        judgeId: dummyJudgeId,
+        submissionId: dummySubmissionId,
+        status: 'assigned',
+      });
+
+      // No score from dummyJudgeId exists
+      jest.spyOn(Score, 'findById').mockResolvedValue(null);
+      jest.spyOn(Score, 'findOne').mockResolvedValue(null);
+
+      const res = await request(app)
+        .get(`/api/v1/judging/scores/${dummySubmissionId.toString()}`)
+        .set('Authorization', `Bearer ${judgeToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBe('Score ballot not found.');
+    });
+
+    it('GET /api/v1/judging/scores/:submissionId should return ONLY authenticated judge own ballot and strip all competitor scores', async () => {
+      // Judge is assigned to submission
+      jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+        _id: new mongoose.Types.ObjectId(),
+        judgeId: dummyJudgeId,
+        submissionId: dummySubmissionId,
+        status: 'completed',
+      });
+
+      const ownBallot = {
+        _id: new mongoose.Types.ObjectId(),
+        judge: dummyJudgeId,
+        judgeId: dummyJudgeId,
+        submission: dummySubmissionId,
+        submissionId: dummySubmissionId,
+        criteriaScores: [
+          { key: 'technical', score: 9.5 },
+          { key: 'impact', score: 8.5 },
+        ],
+        rawCompositeScore: 9.0,
+        privateNotes: 'My confidential review',
+      };
+
+      jest.spyOn(Score, 'findById').mockResolvedValue(null);
+      jest.spyOn(Score, 'findOne').mockResolvedValue(ownBallot);
+
+      const res = await request(app)
+        .get(`/api/v1/judging/scores/${dummySubmissionId.toString()}`)
+        .set('Authorization', `Bearer ${judgeToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.score).toBeDefined();
+      expect(res.body.data.score.rawCompositeScore).toBe(9.0);
+      expect(res.body.data.score.privateNotes).toBe('My confidential review');
+      expect(res.body.data.score.judge.toString()).toBe(dummyJudgeId.toString());
+
+      // Ensure no competitor scores leaked
+      expect(res.body.data.scores).toBeUndefined();
+    });
+
+    it('GET /api/v1/judging/scores/:submissionId should return 403 Forbidden if a judge directly attempts to inspect another judge score ballot', async () => {
+      const otherJudgeId = new mongoose.Types.ObjectId();
+      const otherJudgeScoreId = new mongoose.Types.ObjectId();
+
+      const otherJudgeScore = {
+        _id: otherJudgeScoreId,
+        judge: otherJudgeId,
+        judgeId: otherJudgeId,
+        submission: dummySubmissionId,
+        rawCompositeScore: 6.5,
+        privateNotes: 'Other judge private notes',
+      };
+
+      // Mock finding other judge's score by ID
+      jest.spyOn(Score, 'findById').mockResolvedValue(otherJudgeScore);
+
+      // JudgeAssignment passes for this submission
+      jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+        _id: new mongoose.Types.ObjectId(),
+        judgeId: dummyJudgeId,
+        submissionId: dummySubmissionId,
+        status: 'assigned',
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/judging/scores/${otherJudgeScoreId.toString()}`)
+        .set('Authorization', `Bearer ${judgeToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBe(
+        "Security Violation: You are strictly prohibited from inspecting other judges' scores."
+      );
+    });
+
+    it('GET /api/v1/judging/scores/:submissionId should allow admin to inspect ballot', async () => {
+      const adminId = new mongoose.Types.ObjectId();
+      const adminToken = jwt.sign(
+        { userId: adminId.toString(), role: 'admin' },
+        secret,
+        { expiresIn: '1h' }
+      );
+
+      jest.spyOn(User, 'findById').mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+          _id: adminId,
+          id: adminId.toString(),
+          role: 'admin',
+        }),
+      });
+
+      const ballot = {
+        _id: new mongoose.Types.ObjectId(),
+        submission: dummySubmissionId,
+        rawCompositeScore: 8.7,
+      };
+
+      jest.spyOn(Score, 'findById').mockResolvedValue(ballot);
+      jest.spyOn(Score, 'findOne').mockResolvedValue(ballot);
+
+      const res = await request(app)
+        .get(`/api/v1/judging/scores/${dummySubmissionId.toString()}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.score).toBeDefined();
+    });
   });
 });

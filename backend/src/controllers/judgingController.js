@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Score = require('../models/Score');
 const JudgeAssignment = require('../models/JudgeAssignment');
 const Submission = require('../models/Submission');
@@ -8,7 +9,15 @@ const crypto = require('crypto');
 
 exports.getAssignedQueue = async (req, res, next) => {
   try {
-    const userId = req.user._id || req.user.id;
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Authentication required.',
+      });
+    }
+
+    // Query assignments strictly belonging to req.user.id
     const assignments = await JudgeAssignment.find({
       $or: [{ judgeId: userId }, { judge: userId }],
     })
@@ -16,17 +25,26 @@ exports.getAssignedQueue = async (req, res, next) => {
         path: 'submissionId',
         populate: { path: 'teamId', select: 'name' },
       })
+      .populate({
+        path: 'submission',
+        populate: { path: 'teamId', select: 'name' },
+      })
       .sort({ status: 1, createdAt: 1 });
 
-    // Attach existing scores if any
+    // Attach existing scores if any (only authenticated judge's own score)
     const submissionIds = assignments
       .map((a) => a.submissionId?._id || a.submission?._id || a.submissionId || a.submission)
       .filter(Boolean);
 
     const existingScores = await Score.find({
-      $or: [
-        { judge: userId, submission: { $in: submissionIds } },
-        { judgeId: userId, submissionId: { $in: submissionIds } },
+      $and: [
+        { $or: [{ judge: userId }, { judgeId: userId }] },
+        {
+          $or: [
+            { submission: { $in: submissionIds } },
+            { submissionId: { $in: submissionIds } },
+          ],
+        },
       ],
     });
 
@@ -36,22 +54,31 @@ exports.getAssignedQueue = async (req, res, next) => {
       if (subId) scoreMap[subId] = s;
     });
 
-    const queue = assignments.map((assignment) => {
-      const sub = assignment.submissionId || assignment.submission;
-      const subIdStr = sub?._id ? sub._id.toString() : sub?.toString();
-      const score = subIdStr ? scoreMap[subIdStr] || null : null;
-      return {
-        assignmentId: assignment._id,
-        track: assignment.track,
-        status: assignment.status,
-        submission: sub,
-        score,
-      };
-    });
+    const queue = assignments
+      .map((assignment) => {
+        const sub = assignment.submissionId || assignment.submission;
+        if (!sub) return null;
+        const subIdStr = sub?._id ? sub._id.toString() : sub?.toString();
+        const score = subIdStr ? scoreMap[subIdStr] || null : null;
+        return {
+          assignmentId: assignment._id,
+          track: assignment.track,
+          status: assignment.status,
+          submission: sub,
+          score,
+        };
+      })
+      .filter(Boolean);
+
+    const submissions = queue.map((item) => item.submission);
 
     return res.status(200).json({
       success: true,
-      data: { queue },
+      data: {
+        queue,
+        submissions,
+      },
+      submissions,
     });
   } catch (error) {
     next(error);
@@ -155,17 +182,91 @@ exports.submitScore = async (req, res, next) => {
   }
 };
 
-exports.getScoreById = async (req, res, next) => {
+exports.getScoreBySubmissionId = async (req, res, next) => {
   try {
-    // req.score is attached by isolationGuard.verifyScoreOwnership
+    const submissionId = req.params.submissionId || req.params.scoreId || req.params.id;
+    const userId = (req.user?._id || req.user?.id)?.toString();
+    const isJudge = req.user?.role === 'judge';
+
+    if (!submissionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'submissionId is required.',
+      });
+    }
+
+    // 1. If param is a valid ObjectId, check if it directly matches a Score._id
+    let ownScore = null;
+    if (mongoose.Types.ObjectId.isValid(submissionId)) {
+      const scoreDoc = await Score.findById(submissionId);
+      if (scoreDoc) {
+        const ownerId = (scoreDoc.judge || scoreDoc.judgeId)?.toString();
+        if (isJudge && ownerId !== userId) {
+          return res.status(403).json({
+            success: false,
+            error: "Security Violation: You are strictly prohibited from inspecting other judges' scores.",
+            message: "Security Violation: You are strictly prohibited from inspecting other judges' scores.",
+            statusCode: 403,
+          });
+        }
+        if (ownerId === userId || ['organizer', 'admin'].includes(req.user?.role)) {
+          ownScore = scoreDoc;
+        }
+      }
+    }
+
+    // 2. Query authenticated judge's own score ballot for this submission
+    if (!ownScore) {
+      ownScore = await Score.findOne({
+        $and: [
+          { $or: [{ submission: submissionId }, { submissionId: submissionId }] },
+          { $or: [{ judge: userId }, { judgeId: userId }] },
+        ],
+      });
+    }
+
+    // 3. For organizers and admins: audit access
+    if (!ownScore && ['organizer', 'admin'].includes(req.user?.role)) {
+      const allScores = await Score.find({
+        $or: [{ submission: submissionId }, { submissionId: submissionId }],
+      });
+
+      if (allScores.length > 0) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            score: allScores[0],
+            scores: allScores,
+          },
+          score: allScores[0],
+        });
+      }
+    }
+
+    // If still no score found for this judge and submission
+    if (!ownScore) {
+      return res.status(404).json({
+        success: false,
+        error: 'Score ballot not found.',
+        message: 'Score ballot not found.',
+        statusCode: 404,
+      });
+    }
+
+    // Returns ONLY authenticated judge's own ballot; strips all competitor scores
     return res.status(200).json({
       success: true,
-      data: { score: req.score },
+      data: {
+        score: ownScore,
+      },
+      score: ownScore,
     });
   } catch (error) {
     next(error);
   }
 };
+
+exports.getScoreById = exports.getScoreBySubmissionId;
 
 exports.getEventRubric = async (req, res, next) => {
   try {

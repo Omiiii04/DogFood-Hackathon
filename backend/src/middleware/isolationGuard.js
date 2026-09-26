@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Score = require('../models/Score');
 const JudgeAssignment = require('../models/JudgeAssignment');
 
@@ -35,6 +36,18 @@ const isolationGuard = async (req, res, next) => {
     // If param is :id and matches an identifier
     if (!submissionId && req.params?.id) {
       submissionId = req.params.id;
+    }
+
+    // If not found in body/params/query, parse from URL path (e.g. /scores/:submissionId or /submissions/:submissionId)
+    if (!submissionId) {
+      const urlPath = req.path || req.originalUrl || '';
+      const scoreMatch = urlPath.match(/\/scores\/([a-f0-9]{24}|[a-zA-Z0-9_-]+)/i);
+      const subMatch = urlPath.match(/\/submissions\/([a-f0-9]{24}|[a-zA-Z0-9_-]+)/i);
+      if (scoreMatch) {
+        submissionId = scoreMatch[1];
+      } else if (subMatch) {
+        submissionId = subMatch[1];
+      }
     }
 
     // If route targets a score by scoreId, resolve target submission from Score
