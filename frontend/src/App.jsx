@@ -11,6 +11,7 @@ import { TeamDashboard } from './pages/TeamDashboard';
 import { SubmissionEditor } from './pages/SubmissionEditor';
 import { JudgePortal } from './pages/JudgePortal';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { ProjectorDisplay } from './pages/ProjectorDisplay';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 
@@ -25,6 +26,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/gallery" element={<Gallery />} />
+                <Route path="/projector" element={<ProjectorDisplay />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
 
