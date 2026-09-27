@@ -67,3 +67,115 @@ Status: ALL CHECKS PASSED (100% AIR-GAPPED COMPLIANT)
 ================================================================================
 FINAL VERDICT: READY FOR TOURNAMENT TO BE HOSTED AND JUDGED
 ================================================================================
+
+
+================================================================================
+WBS-44 - END-TO-END MATHEMATICAL VERIFICATION REPORT
+================================================================================
+Status: PASS
+Reference tolerance: 1e-12 for full-precision matrix calculations; API display fields are compared at their documented precision.
+
+Test Dataset
+------------
+Deterministic fixture: 5 projects, 4 judges, 16 ballots, 3 rubric criteria.
+Weights: technical=0.50, impact=0.30, polish=0.20. Judge roles are harsh,
+neutral, lenient, and small-sample. The small-sample judge scores project-3
+only. The weighted criterion values are independently calculated before being
+submitted as raw composite scores to the current API contract.
+
+Mathematical Reference
+----------------------
+The verification calculator independently applies arithmetic mean, sample
+standard deviation (ddof=1), k=3 Bayesian mean and variance shrinkage,
+epsilon=1e-6 calibrated Z-scores, submission mean, and Min-Max 0-100 scaling.
+Global mean=5.831250000000; global sample std=2.633557479912.
+
+Stage-by-Stage Comparison
+-------------------------
+Judge calibration statistics:
+judge-harsh:   n=5 mean=3.000000 std=1.581139 shrunk_mean=4.061719 shrunk_std=2.040431
+judge-neutral: n=5 mean=6.000000 std=1.581139 shrunk_mean=5.936719 shrunk_std=2.040431
+judge-lenient: n=5 mean=8.600000 std=1.140175 shrunk_mean=7.561719 shrunk_std=1.847528
+judge-small:   n=1 mean=5.300000 std=undefined shrunk_mean=5.698438 shrunk_std=2.280728
+
+Final standings (manual reference -> production response):
+rank  project    raw_mean       z_mean          final_0_100       system_score
+1     project-5  7.666666667    0.930265073    99.999945893       100.00
+2     project-4  6.666666667    0.423115731    72.559430801        72.56
+3     project-3  5.825000000    0.028616308    51.214106083        51.21
+4     project-2  5.000000000   -0.410761779    27.440515091        27.44
+5     project-1  4.000000000   -0.917911120     0.000000000         0.00
+
+Full-precision matrix comparison: maximum absolute statistic difference was
+2.2204460492503131e-16 and maximum relative statistic difference was
+1.9474600139335978e-16; calibrated Z-score maximum absolute and relative
+differences were 0.0. All are within absolute and relative tolerance 1e-12.
+API output comparison: all rounded raw means, Z-score means, final scores,
+ballot counts, and ranks matched the independently rounded reference.
+All final scores were within 0-100.
+
+Judge Calibration
+-----------------
+Severity rule verified against global mean +/- global sample std:
+judge-harsh=Strict Grader; judge-neutral=Balanced Grader;
+judge-lenient=Lenient Grader; judge-small=Balanced Grader.
+SEM verified as sample std / sqrt(n): harsh=0.707107, neutral=0.707107,
+lenient=0.509902, small-sample=undefined because n=1.
+
+Variance Reduction
+------------------
+The unchanged WBS-38 benchmark was rerun using its existing WBS-20 dataset.
+raw metric=4.294584743741017
+normalized metric=0.09136752254529971
+variance reduction=4.203217221195717 (97.87249459500224%)
+Qualification threshold >65%: PASS. The result remained reproducible.
+
+Determinism
+-----------
+The complete reference, production, diagnostics, API, and WBS-38 benchmark
+verification was run 10 times. All values, standings, ranks, calibrations,
+and benchmark metrics were identical through at least 6 decimal places.
+
+API Consistency
+---------------
+Manual reference = production algorithm = FastAPI JSON response within the
+declared tolerance and API rounding precision for POST /api/v1/normalize.
+No new endpoint was introduced.
+
+Tests Added
+-----------
+1. Five-project reference versus production standings.
+2. Judge-level raw statistics.
+3. Bayesian mean.
+4. Bayesian variance.
+5. Calibrated Z-scores.
+6. Weighted criterion aggregation.
+7. Final 0-100 scores and bounds.
+8. Final ranking.
+9. Judge severity and SEM.
+10. FastAPI response versus reference.
+11. WBS-38 variance benchmark consistency.
+12. Ten-run end-to-end determinism.
+
+Pass/Fail Summary
+-----------------
+Focused verification tests: 12 passed.
+Full judging-service suite: 125 passed, 1 warning.
+compileall: PASS.
+git diff --check: PASS.
+
+Report Artifact
+---------------
+This WBS-44 section is contained in acceptance-report.txt. Overall status:
+PASS.
+
+Scope Compliance
+----------------
+Only the verification test and this report were changed. No normalization
+algorithm, API route, Node integration, frontend, Docker, or .env behavior
+was changed. WBS-38 benchmark logic was not modified.
+
+Next Chunk
+----------
+WBS-47 - Voting Anomaly Detection Classifier
+Not implemented in WBS-44.
