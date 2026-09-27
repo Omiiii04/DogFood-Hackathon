@@ -13,7 +13,6 @@ export const UpvoteWidget = ({ submission, size = 'sm' }) => {
     if (isVoting) return;
 
     setIsVoting(true);
-    // Optimistic UI update
     setVotes((prev) => prev + 1);
 
     try {
@@ -22,7 +21,6 @@ export const UpvoteWidget = ({ submission, size = 'sm' }) => {
         setVotes(res.data.newVoteCount);
       }
     } catch (err) {
-      // Revert on failure
       setVotes((prev) => prev - 1);
       addNotification(err.message, 'error');
     } finally {
@@ -36,9 +34,8 @@ export const UpvoteWidget = ({ submission, size = 'sm' }) => {
     <button
       onClick={handleVote}
       disabled={isVoting}
-      className={`flex items-center space-x-1.5 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-rose-400 hover:border-rose-800/60 active:scale-95 transition-all ${
-        isLg ? 'px-4 py-2 shadow-glow' : 'px-3 py-1.5'
-      }`}
+      className={`flex items-center space-x-1.5 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-rose-400 hover:border-rose-800/60 active:scale-95 transition-all ${isLg ? 'px-4 py-2 shadow-glow' : 'px-3 py-1.5'
+        }`}
     >
       <Heart className={`${isLg ? 'w-4 h-4' : 'w-3.5 h-3.5'} ${votes > 0 ? 'text-rose-500 fill-rose-500' : ''}`} />
       <span className={`font-mono font-bold ${isLg ? 'text-sm' : 'text-xs'}`}>{votes}</span>

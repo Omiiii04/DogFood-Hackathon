@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useJudging } from '../hooks/useJudging';
 import { RubricSlider } from '../components/RubricSlider';
+import { PairwiseJudging } from '../components/PairwiseJudging';
 import { useNotification } from '../context/NotificationContext';
 import { Modal } from '../components/Modal';
 import api from '../services/api';
@@ -19,6 +20,7 @@ export const JudgePortal = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
+  const [mode, setMode] = useState('rubric'); // 'rubric' or 'pairwise'
 
   useEffect(() => {
     if (selectedItem) {
@@ -137,8 +139,28 @@ export const JudgePortal = () => {
             Evaluate projects assigned to your track against the official weighted rubric.
           </p>
         </div>
-        <div className="px-3.5 py-1.5 rounded-xl bg-surface border border-border-subtle text-xs font-mono text-gray-300">
-          Total Queue: <span className="font-bold text-white">{queue.length}</span> Projects
+        <div className="flex items-center space-x-4">
+          <div className="flex bg-surface-raised rounded-xl p-1 border border-border-subtle">
+            <button
+              onClick={() => setMode('rubric')}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                mode === 'rubric' ? 'bg-blue-600 text-white shadow-glow' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Rubric Mode
+            </button>
+            <button
+              onClick={() => setMode('pairwise')}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                mode === 'pairwise' ? 'bg-blue-600 text-white shadow-glow' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Pairwise A/B
+            </button>
+          </div>
+          <div className="px-3.5 py-1.5 rounded-xl bg-surface border border-border-subtle text-xs font-mono text-gray-300">
+            Total Queue: <span className="font-bold text-white">{queue.length}</span> Projects
+          </div>
         </div>
       </div>
 
@@ -146,6 +168,8 @@ export const JudgePortal = () => {
         <div className="p-16 text-center rounded-2xl bg-surface border border-border-subtle">
           <p className="text-gray-400 text-sm">No projects currently assigned to your queue.</p>
         </div>
+      ) : mode === 'pairwise' ? (
+        <PairwiseJudging queue={queue} rubric={rubric} refetch={refetch} />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-3 space-y-3">
