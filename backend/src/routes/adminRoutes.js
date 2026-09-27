@@ -14,6 +14,7 @@ router.get('/export/csv', adminController.exportCSV);
 router.get('/export/json', adminController.exportJSON);
 router.get('/audit-logs', adminController.getAuditLogs);
 router.get('/stats', adminController.getSystemStats);
+router.get('/analytics', adminController.getAnalytics);
 
 // Rubrics configuration & locking
 router.post('/rubrics', adminController.upsertRubric);

@@ -12,13 +12,15 @@ import {
   Download,
   History,
   Search,
-  Filter
+  Filter,
+  AlertTriangle
 } from 'lucide-react';
 
 export const AdminDashboard = () => {
   const { addNotification } = useNotification();
 
   const [stats, setStats] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,15 +35,17 @@ export const AdminDashboard = () => {
   const fetchAdminData = async () => {
     setLoading(true);
     try {
-      const [statsRes, lbRes, logsRes] = await Promise.all([
+      const [statsRes, lbRes, logsRes, analyticsRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/admin/leaderboard'),
         api.get('/admin/audit-logs'),
+        api.get('/admin/analytics').catch(() => null),
       ]);
 
-      if (statsRes.success) setStats(statsRes.data);
-      if (lbRes.success) setLeaderboard(lbRes.data.leaderboard);
-      if (logsRes.success) setAuditLogs(logsRes.data.logs);
+      if (statsRes && statsRes.success) setStats(statsRes.data);
+      if (lbRes && lbRes.success) setLeaderboard(lbRes.data.leaderboard);
+      if (logsRes && logsRes.success) setAuditLogs(logsRes.data.logs);
+      if (analyticsRes && analyticsRes.success) setAnalytics(analyticsRes.data);
     } catch (err) {
       addNotification(err.message, 'error');
     } finally {
@@ -240,8 +244,60 @@ export const AdminDashboard = () => {
           <div className="p-4 rounded-xl bg-surface border border-border-subtle">
             <div className="text-xs text-gray-400 font-medium">Completion</div>
             <div className="text-2xl font-bold font-mono text-cyan-400 mt-1">
-              {ballotPercent}%
+              {analytics?.judgingMetrics?.completionPercentage !== undefined
+                ? `${analytics.judgingMetrics.completionPercentage}%`
+                : `${ballotPercent}%`}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Track Breakdown Pills */}
+      {analytics?.submissionMetrics?.trackBreakdown && Object.keys(analytics.submissionMetrics.trackBreakdown).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-surface/50 border border-border-subtle rounded-xl text-xs">
+          <span className="text-gray-400 font-medium">Track Breakdown:</span>
+          {Object.entries(analytics.submissionMetrics.trackBreakdown).map(([trackName, count]) => (
+            <span
+              key={trackName}
+              className="px-2.5 py-1 rounded-full bg-surface border border-border-subtle text-gray-300 font-mono"
+            >
+              {trackName}: <strong className="text-white">{count}</strong>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Flagged Anomalies Section */}
+      {analytics?.flaggedAnomalies && analytics.flaggedAnomalies.length > 0 && (
+        <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 space-y-3">
+          <div className="flex items-center space-x-2 text-sm font-bold text-amber-400">
+            <AlertTriangle className="w-5 h-5" />
+            <span>Flagged Judge Anomalies ({analytics.flaggedAnomalies.length})</span>
+          </div>
+          <p className="text-xs text-amber-300/80">
+            Automated anomaly detection identified judges with zero score variance (straight-lining) or completion rates under 50%.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            {analytics.flaggedAnomalies.map((item) => (
+              <div
+                key={item.judgeId}
+                className="p-3.5 rounded-xl bg-canvas/80 border border-amber-500/20 text-xs space-y-1.5 shadow-sm"
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-white text-sm">{item.judgeName}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {item.completionPercentage}% Done
+                  </span>
+                </div>
+                <div className="text-gray-400 flex items-center justify-between text-[11px]">
+                  <span>Ballots: {item.completedBallots}/{item.assignedBallots}</span>
+                  <span>Variance: {item.variance}</span>
+                </div>
+                <div className="text-red-400 font-medium text-[11px] leading-tight pt-1">
+                  {item.message}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -265,7 +321,7 @@ export const AdminDashboard = () => {
               <p className="text-xs text-gray-400 mt-1">Scatter plot of judge calibration vs. variance</p>
             </div>
           </div>
-          <JudgeVarianceChart judgeStats={stats?.judgeStats || []} />
+          <JudgeVarianceChart judgeStats={analytics?.judgeVarianceMetrics || stats?.judgeStats || []} />
         </div>
       </div>
 

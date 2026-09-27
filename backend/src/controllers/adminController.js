@@ -448,7 +448,7 @@ exports.getAuditLogs = async (req, res, next) => {
 
 exports.getSystemStats = async (req, res, next) => {
   try {
-    const [totalUsers, totalTeams, totalSubmissions, totalJudges, totalScores, totalAssignments] =
+    const [totalUsers, totalTeams, totalSubmissions, totalJudges, totalScores, totalAssignments, scoresList] =
       await Promise.all([
         User.countDocuments(),
         Team.countDocuments(),
@@ -803,3 +803,313 @@ exports.lockRubric = async (req, res, next) => {
 };
 exports.freezeRubric = exports.lockRubric;
 
+exports.getAnalytics = async (req, res, next) => {
+  try {
+    if (req.user && req.user.role !== 'organizer' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: Organizer or Admin permissions required.',
+      });
+    }
+
+    const eventId = req.query?.eventId || req.body?.eventId;
+    const submissionFilter = {};
+    if (eventId) {
+      submissionFilter.event = eventId;
+    }
+
+    // 1. Fetch Submissions
+    const submissions = await Submission.find(submissionFilter).lean();
+    const totalSubmissions = submissions.length;
+    const finalizedCount = submissions.filter(
+      (s) => s.status === 'submitted' || s.status === 'locked'
+    ).length;
+    const draftCount = submissions.filter((s) => s.status === 'draft').length;
+
+    const trackBreakdown = {};
+    submissions.forEach((s) => {
+      const track = s.track || 'General';
+      trackBreakdown[track] = (trackBreakdown[track] || 0) + 1;
+    });
+
+    const submissionMetrics = {
+      totalSubmissions,
+      total: totalSubmissions,
+      finalizedCount,
+      finalized: finalizedCount,
+      draftCount,
+      draft: draftCount,
+      trackBreakdown,
+      tracks: Object.entries(trackBreakdown).map(([track, count]) => ({ track, count })),
+    };
+
+    // 2. Fetch Assignments, Scores, & Judges
+    let assignmentFilter = {};
+    let scoreFilter = { isFinal: { $ne: false } };
+
+    if (eventId) {
+      const subIds = submissions.map((s) => s._id);
+      assignmentFilter.submissionId = { $in: subIds };
+      scoreFilter.submission = { $in: subIds };
+    }
+
+    const [assignments, scores, judgeUsers] = await Promise.all([
+      JudgeAssignment.find(assignmentFilter).lean(),
+      Score.find(scoreFilter).populate('judge', 'fullName email role').lean(),
+      User.find({ role: 'judge' }).select('fullName email role').lean(),
+    ]);
+
+    // Track completed score pairs (judge_submission)
+    const completedScoreSet = new Set();
+    const allRawScores = [];
+    const judgeScoresMap = {};
+
+    scores.forEach((s) => {
+      const jId = (s.judgeId || s.judge?._id || s.judge || '').toString();
+      const subId = (s.submissionId || s.submission?._id || s.submission || '').toString();
+      if (jId && subId) {
+        completedScoreSet.add(`${jId}_${subId}`);
+      }
+
+      let rawVal = null;
+      if (s.rawCompositeScore != null && !isNaN(Number(s.rawCompositeScore))) {
+        rawVal = Number(s.rawCompositeScore);
+      } else if (s.totalRawScore != null && !isNaN(Number(s.totalRawScore))) {
+        rawVal = Number(s.totalRawScore);
+      } else if (Array.isArray(s.criteriaScores) && s.criteriaScores.length > 0) {
+        let weightedSum = 0;
+        let weightSum = 0;
+        for (const c of s.criteriaScores) {
+          const sc = Number(c.score ?? c.rawScore ?? 0);
+          const wt = Number(c.weight ?? 1.0);
+          weightedSum += sc * wt;
+          weightSum += wt;
+        }
+        rawVal = weightSum > 0 ? weightedSum / weightSum : 0;
+      }
+
+      if (rawVal != null && !isNaN(rawVal)) {
+        allRawScores.push(rawVal);
+        if (jId) {
+          if (!judgeScoresMap[jId]) judgeScoresMap[jId] = [];
+          judgeScoresMap[jId].push(rawVal);
+        }
+      }
+    });
+
+    // Compute judging metrics
+    let totalBallotsAssigned = assignments.length;
+    let completedBallots = 0;
+
+    assignments.forEach((a) => {
+      const jId = (a.judgeId || a.judge?._id || a.judge || '').toString();
+      const subId = (a.submissionId || a.submission?._id || a.submission || '').toString();
+      if (a.status === 'completed' || completedScoreSet.has(`${jId}_${subId}`)) {
+        completedBallots++;
+      }
+    });
+
+    // Fallback if assignments collection is empty but scores were submitted directly
+    if (totalBallotsAssigned === 0 && scores.length > 0) {
+      totalBallotsAssigned = scores.length;
+      completedBallots = scores.length;
+    }
+
+    const completionPercentage = totalBallotsAssigned > 0
+      ? Number(((completedBallots / totalBallotsAssigned) * 100).toFixed(2))
+      : 0;
+    const completionRate = totalBallotsAssigned > 0
+      ? Number((completedBallots / totalBallotsAssigned).toFixed(4))
+      : 0;
+
+    const judgingMetrics = {
+      totalBallotsAssigned,
+      totalAssigned: totalBallotsAssigned,
+      completedBallots,
+      completed: completedBallots,
+      pendingBallots: Math.max(0, totalBallotsAssigned - completedBallots),
+      completionPercentage,
+      completionRate,
+    };
+
+    // 3. Compute Global Statistics
+    const totalScoreCount = allRawScores.length;
+    const globalMean = totalScoreCount > 0
+      ? allRawScores.reduce((sum, v) => sum + v, 0) / totalScoreCount
+      : 0;
+    const globalVariance = totalScoreCount > 1
+      ? allRawScores.reduce((sum, v) => sum + Math.pow(v - globalMean, 2), 0) / (totalScoreCount - 1)
+      : 0;
+    const globalStd = Math.sqrt(globalVariance);
+
+    // 4. Map Judge Assignments per judge
+    const judgeAssignmentsMap = {};
+    assignments.forEach((a) => {
+      const jId = (a.judgeId || a.judge?._id || a.judge || '').toString();
+      if (!jId) return;
+      if (!judgeAssignmentsMap[jId]) {
+        judgeAssignmentsMap[jId] = { assigned: 0, completed: 0 };
+      }
+      judgeAssignmentsMap[jId].assigned++;
+      const subId = (a.submissionId || a.submission?._id || a.submission || '').toString();
+      if (a.status === 'completed' || completedScoreSet.has(`${jId}_${subId}`)) {
+        judgeAssignmentsMap[jId].completed++;
+      }
+    });
+
+    // User lookup map
+    const judgeUserMap = {};
+    judgeUsers.forEach((u) => {
+      judgeUserMap[u._id.toString()] = u;
+    });
+
+    // All relevant judges
+    const allJudgeIdSet = new Set([
+      ...judgeUsers.map((u) => u._id.toString()),
+      ...Object.keys(judgeScoresMap),
+      ...Object.keys(judgeAssignmentsMap),
+    ]);
+
+    const priorK = Number(req.query?.priorK || req.body?.priorK || 3.0);
+    const judgeVarianceMetrics = [];
+    const flaggedAnomalies = [];
+
+    allJudgeIdSet.forEach((jId) => {
+      const judgeDoc = judgeUserMap[jId];
+      const judgeName = judgeDoc?.fullName || `Judge ${jId.slice(-4)}`;
+      const email = judgeDoc?.email || '';
+
+      const scoresList = judgeScoresMap[jId] || [];
+      const n = scoresList.length;
+
+      const assignInfo = judgeAssignmentsMap[jId] || { assigned: 0, completed: 0 };
+      let assignedCount = assignInfo.assigned;
+      let judgeCompletedCount = Math.max(assignInfo.completed, n);
+      if (assignedCount === 0 && judgeCompletedCount > 0) {
+        assignedCount = judgeCompletedCount;
+      }
+
+      const judgeCompletionRate = assignedCount > 0
+        ? Number(((judgeCompletedCount / assignedCount) * 100).toFixed(2))
+        : (judgeCompletedCount > 0 ? 100 : 0);
+
+      // Mean
+      const rawMean = n > 0 ? scoresList.reduce((sum, v) => sum + v, 0) / n : 0;
+
+      // Sample variance & standard deviation
+      const variance = n > 1
+        ? scoresList.reduce((sum, v) => sum + Math.pow(v - rawMean, 2), 0) / (n - 1)
+        : 0;
+      const std = Math.sqrt(variance);
+
+      // Bayesian delta: \delta_j = \hat{\mu}_j - \mu_{global}
+      // \hat{\mu}_j = (n * rawMean + priorK * globalMean) / (n + priorK)
+      const shrunkMean = (n * rawMean + priorK * globalMean) / (n + priorK);
+      const bayesianDelta = shrunkMean - globalMean;
+
+      const metricEntry = {
+        judgeId: jId,
+        judgeName,
+        name: judgeName,
+        email,
+        sampleSize: n,
+        count: n,
+        mean: Number(rawMean.toFixed(2)),
+        rawMean: Number(rawMean.toFixed(4)),
+        standardDeviation: Number(std.toFixed(4)),
+        std: Number(std.toFixed(4)),
+        variance: Number(variance.toFixed(4)),
+        shrunkMean: Number(shrunkMean.toFixed(4)),
+        bayesianShrunkMean: Number(shrunkMean.toFixed(4)),
+        bayesianDelta: Number(bayesianDelta.toFixed(4)),
+        delta: Number(bayesianDelta.toFixed(4)),
+        assignedBallots: assignedCount,
+        totalAssigned: assignedCount,
+        completedBallots: judgeCompletedCount,
+        completed: judgeCompletedCount,
+        completionPercentage: judgeCompletionRate,
+        completionRate: judgeCompletionRate,
+        isAnomalous: false,
+        anomalyReasons: [],
+      };
+
+      // Anomaly detection rules:
+      // 1. Zero variance: completed >= 2 evaluations and variance === 0
+      const isZeroVariance = n >= 2 && variance === 0;
+
+      // 2. Low completion: assigned > 0 and completion rate < 50%
+      const isLowCompletion = assignedCount > 0 && judgeCompletionRate < 50.0;
+
+      if (isZeroVariance || isLowCompletion) {
+        const reasons = [];
+        const descriptions = [];
+
+        if (isZeroVariance) {
+          reasons.push('zero_variance');
+          descriptions.push('Zero score variance across completed evaluations (potential straight-line scoring)');
+        }
+        if (isLowCompletion) {
+          reasons.push('low_completion_rate');
+          descriptions.push(
+            `Completion rate of ${judgeCompletionRate}% is below the 50% threshold (${judgeCompletedCount}/${assignedCount} completed)`
+          );
+        }
+
+        metricEntry.isAnomalous = true;
+        metricEntry.anomalyReasons = reasons;
+
+        flaggedAnomalies.push({
+          judgeId: jId,
+          judgeName,
+          email,
+          reasons,
+          issue: reasons.join(', '),
+          type: reasons[0],
+          message: descriptions.join('; '),
+          descriptions,
+          variance: Number(variance.toFixed(4)),
+          standardDeviation: Number(std.toFixed(4)),
+          mean: Number(rawMean.toFixed(4)),
+          bayesianDelta: Number(bayesianDelta.toFixed(4)),
+          sampleSize: n,
+          completionRate: judgeCompletionRate,
+          completionPercentage: judgeCompletionRate,
+          assignedBallots: assignedCount,
+          totalAssigned: assignedCount,
+          completedBallots: judgeCompletedCount,
+          completed: judgeCompletedCount,
+          hasZeroVariance: isZeroVariance,
+          hasLowCompletion: isLowCompletion,
+          zeroVariance: isZeroVariance,
+          lowCompletion: isLowCompletion,
+        });
+      }
+
+      judgeVarianceMetrics.push(metricEntry);
+    });
+
+    const analyticsData = {
+      submissionMetrics,
+      judgingMetrics,
+      judgeVarianceMetrics,
+      flaggedAnomalies,
+      globalMetrics: {
+        globalMean: Number(globalMean.toFixed(4)),
+        globalStd: Number(globalStd.toFixed(4)),
+        totalScores: totalScoreCount,
+        totalScoresEvaluated: totalScoreCount,
+      },
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: 'Organizer analytics successfully retrieved.',
+      data: analyticsData,
+      ...analyticsData,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getOrganizerAnalytics = exports.getAnalytics;
