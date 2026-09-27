@@ -5,13 +5,9 @@ import api from '../services/api';
 import {
   Shield,
   Users,
-  Award,
-  FileSpreadsheet,
   Cpu,
   Download,
-  Activity,
   History,
-  CheckCircle,
 } from 'lucide-react';
 
 export const AdminDashboard = () => {
@@ -22,7 +18,6 @@ export const AdminDashboard = () => {
   const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Action states
   const [assigning, setAssigning] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
 
@@ -39,7 +34,6 @@ export const AdminDashboard = () => {
       if (lbRes.success) setLeaderboard(lbRes.data.leaderboard);
       if (logsRes.success) setAuditLogs(logsRes.data.logs);
     } catch (err) {
-      console.error(err);
       addNotification(err.message, 'error');
     } finally {
       setLoading(false);
@@ -100,7 +94,6 @@ export const AdminDashboard = () => {
 
   return (
     <div className="space-y-8 py-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-border-subtle gap-4">
         <div>
           <div className="flex items-center space-x-2 text-xs font-mono text-blue-400 uppercase tracking-wider mb-1">
@@ -113,7 +106,6 @@ export const AdminDashboard = () => {
           </p>
         </div>
 
-        {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={handleAssignJudges}
@@ -143,7 +135,6 @@ export const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Metrics Row */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="p-4 rounded-xl bg-surface border border-border-subtle">
@@ -181,12 +172,10 @@ export const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Standings & Leaderboard Table */}
       <div className="space-y-4">
         <LeaderboardTable data={leaderboard} />
       </div>
 
-      {/* Immutable Audit Trail */}
       <div className="bg-surface border border-border-subtle rounded-2xl p-6 space-y-4">
         <h3 className="font-bold text-base text-white flex items-center space-x-2">
           <History className="w-5 h-5 text-gray-400" />

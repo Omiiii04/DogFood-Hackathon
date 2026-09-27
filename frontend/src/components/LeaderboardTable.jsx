@@ -17,7 +17,6 @@ export const LeaderboardTable = ({ data = [], onSelectProject }) => {
 
   return (
     <div className="bg-surface rounded-xl border border-border-subtle overflow-hidden">
-      {/* Table Header Controls */}
       <div className="p-4 bg-surface-raised border-b border-border-subtle flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h3 className="font-bold text-base text-white flex items-center space-x-2">
@@ -29,7 +28,6 @@ export const LeaderboardTable = ({ data = [], onSelectProject }) => {
           </p>
         </div>
 
-        {/* View Toggle */}
         <div className="flex items-center bg-canvas p-1 rounded-lg border border-border-subtle">
           <button
             onClick={() => setUseNormalized(true)}
@@ -56,7 +54,6 @@ export const LeaderboardTable = ({ data = [], onSelectProject }) => {
         </div>
       </div>
 
-      {/* Table Content */}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm text-gray-300">
           <thead className="bg-canvas/50 text-xs font-mono uppercase text-gray-400 border-b border-border-subtle">
