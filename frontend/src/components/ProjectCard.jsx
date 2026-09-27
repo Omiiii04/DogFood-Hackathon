@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { ExternalLink, Github, Heart, MessageSquare } from 'lucide-react';
+import { ExternalLink, Github, Heart } from 'lucide-react';
 import { getTrackBadgeColor } from '../utils/formatters';
 import api from '../services/api';
 import { useNotification } from '../context/NotificationContext';
+
+const THUMBNAIL_FALLBACK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='176'%3E%3Crect width='600' height='176' fill='%230f172a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%234b5563' font-size='12' font-family='monospace'%3ENo Preview%3C/text%3E%3C/svg%3E";
 
 export const ProjectCard = ({ submission, onOpenModal }) => {
   const [votes, setVotes] = useState(submission.publicVoteCount || 0);
@@ -32,14 +34,13 @@ export const ProjectCard = ({ submission, onOpenModal }) => {
       onClick={() => onOpenModal && onOpenModal(submission)}
       className="group relative bg-surface border border-border-subtle rounded-xl overflow-hidden hover:border-blue-500/50 hover:shadow-card transition-all duration-300 flex flex-col cursor-pointer"
     >
-      {/* Thumbnail */}
       <div className="relative h-44 w-full bg-surface-raised overflow-hidden">
         <img
-          src={submission.thumbnailPath || '/uploads/default-thumbnail.webp'}
+          src={submission.thumbnailUrl || '/uploads/default-thumbnail.webp'}
           alt={submission.title}
           onError={(e) => {
             e.target.onerror = null;
-            e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=60';
+            e.target.src = THUMBNAIL_FALLBACK;
           }}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
@@ -54,7 +55,6 @@ export const ProjectCard = ({ submission, onOpenModal }) => {
         </div>
       </div>
 
-      {/* Content */}
       <div className="p-5 flex-1 flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -63,19 +63,18 @@ export const ProjectCard = ({ submission, onOpenModal }) => {
             </h3>
           </div>
           <p className="text-xs font-medium text-gray-400 mb-2">
-            by <span className="text-gray-200">{submission.teamId?.name || 'CyberDinos'}</span>
+            by <span className="text-gray-200">{submission.teamId?.name || submission.team?.name || '—'}</span>
           </p>
           <p className="text-sm text-gray-300 line-clamp-2 mb-4 leading-relaxed">
             {submission.tagline}
           </p>
         </div>
 
-        {/* Card Footer */}
         <div className="pt-3 border-t border-border-subtle flex items-center justify-between text-xs text-gray-400">
           <div className="flex items-center space-x-2">
-            {submission.repoUrl && (
+            {submission.githubUrl && (
               <a
-                href={submission.repoUrl}
+                href={submission.githubUrl}
                 target="_blank"
                 rel="noreferrer"
                 onClick={(e) => e.stopPropagation()}
@@ -85,9 +84,9 @@ export const ProjectCard = ({ submission, onOpenModal }) => {
                 <Github className="w-4 h-4" />
               </a>
             )}
-            {submission.demoUrl && (
+            {submission.demoVideoUrl && (
               <a
-                href={submission.demoUrl}
+                href={submission.demoVideoUrl}
                 target="_blank"
                 rel="noreferrer"
                 onClick={(e) => e.stopPropagation()}
@@ -99,7 +98,6 @@ export const ProjectCard = ({ submission, onOpenModal }) => {
             )}
           </div>
 
-          {/* Upvote Button */}
           <button
             onClick={handleVote}
             disabled={isVoting}

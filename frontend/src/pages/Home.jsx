@@ -1,18 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTimer } from '../hooks/useTimer';
-import { Trophy, ShieldCheck, Cpu, Code2, Users, ArrowRight, Zap, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Cpu, ArrowRight, Zap } from 'lucide-react';
 
 export const Home = () => {
   const { user } = useAuth();
-  // Mock 24h deadline from boot
-  const deadline = new Date(Date.now() + 24 * 3600 * 1000);
+  const [deadline] = useState(() => new Date(Date.now() + 24 * 3600 * 1000));
   const timeLeft = useTimer(deadline);
 
   return (
     <div className="space-y-16 py-8">
-      {/* Hero Section */}
       <section className="relative rounded-3xl bg-gradient-to-b from-surface-raised via-surface to-canvas border border-border-subtle p-8 sm:p-14 overflow-hidden shadow-2xl">
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-indigo-600/10 blur-3xl pointer-events-none" />
@@ -65,7 +63,6 @@ export const Home = () => {
           </div>
         </div>
 
-        {/* Live Countdown Banner */}
         <div className="mt-12 pt-8 border-t border-border-subtle/60 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-xl">
           <div className="bg-canvas/60 p-4 rounded-xl border border-border-subtle text-center">
             <div className="text-2xl sm:text-3xl font-bold font-mono text-blue-400">
@@ -95,7 +92,6 @@ export const Home = () => {
         </div>
       </section>
 
-      {/* Feature Pillar Highlights */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="p-6 rounded-2xl bg-surface border border-border-subtle hover:border-gray-700 transition-colors">
           <div className="w-12 h-12 rounded-xl bg-purple-950/80 border border-purple-800/50 flex items-center justify-center text-purple-400 mb-4">

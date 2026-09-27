@@ -20,13 +20,11 @@ export const Modal = ({ isOpen, onClose, title, children, maxWidth = 'max-w-2xl'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
-      {/* Modal Dialog Body */}
       <div
         className={`relative bg-surface border border-border-subtle rounded-2xl shadow-card w-full ${maxWidth} max-h-[90vh] flex flex-col overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200`}
       >
