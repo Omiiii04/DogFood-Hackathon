@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LeaderboardTable } from '../components/LeaderboardTable';
+import { ScoreDistributionChart } from '../components/ScoreDistributionChart';
+import { JudgeVarianceChart } from '../components/JudgeVarianceChart';
+import { AuditLogViewer } from '../components/AuditLogViewer';
 import { useNotification } from '../context/NotificationContext';
 import api from '../services/api';
 import {
@@ -8,6 +11,8 @@ import {
   Cpu,
   Download,
   History,
+  Search,
+  Filter
 } from 'lucide-react';
 
 export const AdminDashboard = () => {
@@ -21,6 +26,9 @@ export const AdminDashboard = () => {
   const [normalizing, setNormalizing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [trackFilter, setTrackFilter] = useState('All Tracks');
 
   const fetchAdminData = async () => {
     setLoading(true);
@@ -69,7 +77,7 @@ export const AdminDashboard = () => {
       const res = await api.post('/admin/normalize-scores');
       if (res.success) {
         addNotification(
-          `Normalized ${res.data.total_scores_processed} scores across ${res.data.total_submissions} projects!`,
+          `Normalized ${res.data.total_scores_processed} scores across ${res.data.total_submissions || 'projects'}!`,
           'success'
         );
         fetchAdminData();
@@ -111,6 +119,22 @@ export const AdminDashboard = () => {
       </div>
     );
   }
+
+  const filteredLeaderboard = leaderboard.filter(item => {
+    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          item.teamName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTrack = trackFilter === 'All Tracks' || item.track === trackFilter;
+    return matchesSearch && matchesTrack;
+  });
+
+  const uniqueTracks = ['All Tracks', ...new Set(leaderboard.map(item => item.track).filter(Boolean))];
+
+  const lastRunLog = auditLogs.find(l => l.action === 'NORMALIZATION_EXECUTED');
+  const lastRunTime = lastRunLog ? new Date(lastRunLog.timestamp).toLocaleString() : 'Never';
+
+  const ballotPercent = stats && stats.totalAssignments > 0 
+    ? ((stats.totalScores / stats.totalAssignments) * 100).toFixed(1) 
+    : 0;
 
   return (
     <div className="space-y-8 py-6">
@@ -180,7 +204,7 @@ export const AdminDashboard = () => {
       </div>
 
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
           <div className="p-4 rounded-xl bg-surface border border-border-subtle">
             <div className="text-xs text-gray-400 font-medium">Participants</div>
             <div className="text-2xl font-bold font-mono text-white mt-1">{stats.totalUsers}</div>
@@ -202,22 +226,103 @@ export const AdminDashboard = () => {
             </div>
           </div>
           <div className="p-4 rounded-xl bg-surface border border-border-subtle">
-            <div className="text-xs text-gray-400 font-medium">Ballots Recorded</div>
-            <div className="text-2xl font-bold font-mono text-emerald-400 mt-1">
-              {stats.totalScores}
-            </div>
-          </div>
-          <div className="p-4 rounded-xl bg-surface border border-border-subtle">
             <div className="text-xs text-gray-400 font-medium">Assignments</div>
             <div className="text-2xl font-bold font-mono text-gray-300 mt-1">
               {stats.totalAssignments}
             </div>
           </div>
+          <div className="p-4 rounded-xl bg-surface border border-border-subtle">
+            <div className="text-xs text-gray-400 font-medium">Ballots</div>
+            <div className="text-2xl font-bold font-mono text-emerald-400 mt-1">
+              {stats.totalScores}
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-surface border border-border-subtle">
+            <div className="text-xs text-gray-400 font-medium">Completion</div>
+            <div className="text-2xl font-bold font-mono text-cyan-400 mt-1">
+              {ballotPercent}%
+            </div>
+          </div>
         </div>
       )}
 
+      {/* Analytics Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-surface border border-border-subtle rounded-2xl p-6 relative overflow-hidden">
+          <div className="flex justify-between items-start mb-2 relative z-10">
+            <div>
+              <h3 className="font-bold text-white text-base">Score Distribution</h3>
+              <p className="text-xs text-gray-400 mt-1">Histogram of normalized tournament scores</p>
+            </div>
+          </div>
+          <ScoreDistributionChart leaderboard={leaderboard} />
+        </div>
+
+        <div className="bg-surface border border-border-subtle rounded-2xl p-6 relative overflow-hidden">
+          <div className="flex justify-between items-start mb-2 relative z-10">
+            <div>
+              <h3 className="font-bold text-white text-base">Judge Variance Plot</h3>
+              <p className="text-xs text-gray-400 mt-1">Scatter plot of judge calibration vs. variance</p>
+            </div>
+          </div>
+          <JudgeVarianceChart judgeStats={stats?.judgeStats || []} />
+        </div>
+      </div>
+
+      {/* Normalization Engine Control */}
+      <div className="bg-surface border border-border-subtle rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <h3 className="font-bold text-white text-lg flex items-center space-x-2">
+            <Cpu className="w-5 h-5 text-blue-400" />
+            <span>Empirical Bayesian Normalization</span>
+          </h3>
+          <p className="text-sm text-gray-400 mt-1">
+            Recompute all Z-Scores and standings using the Python judging microservice.
+          </p>
+          <div className="text-xs font-mono text-gray-500 mt-2 flex items-center space-x-2">
+            <History className="w-3.5 h-3.5" />
+            <span>Last Executed: {lastRunTime}</span>
+          </div>
+        </div>
+        <button
+          onClick={handleRunNormalization}
+          disabled={normalizing}
+          className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-glow flex items-center space-x-2 transition-all disabled:opacity-50"
+        >
+          {normalizing && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+          <span>{normalizing ? 'Computing Standings...' : 'Run Normalization Engine'}</span>
+        </button>
+      </div>
+
       <div className="space-y-4">
-        <LeaderboardTable data={leaderboard} />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h3 className="font-bold text-lg text-white">Live Leaderboard</h3>
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search projects or teams..."
+                className="w-full pl-9 pr-4 py-2 bg-canvas border border-border-subtle rounded-lg text-sm text-white focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div className="relative w-full sm:w-48">
+              <Filter className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select
+                value={trackFilter}
+                onChange={(e) => setTrackFilter(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-canvas border border-border-subtle rounded-lg text-sm text-white focus:border-blue-500 focus:outline-none appearance-none"
+              >
+                {uniqueTracks.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+        <LeaderboardTable data={filteredLeaderboard} />
       </div>
 
       <div className="bg-surface border border-border-subtle rounded-2xl p-6 space-y-4">
@@ -226,27 +331,7 @@ export const AdminDashboard = () => {
           <span>Security Audit Trail (Tamper-Evident)</span>
         </h3>
 
-        <div className="divide-y divide-border-subtle font-mono text-xs">
-          {auditLogs.length === 0 ? (
-            <p className="py-4 text-gray-500 font-sans text-sm">No audit events recorded yet.</p>
-          ) : (
-            auditLogs.slice(0, 10).map((log) => (
-              <div key={log._id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center space-x-3">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-800 text-blue-300">
-                    {log.action}
-                  </span>
-                  <span className="text-gray-300">
-                    by <strong className="text-white">{log.actorId?.fullName || log.actorRole}</strong>
-                  </span>
-                </div>
-                <div className="text-gray-500">
-                  {new Date(log.timestamp).toLocaleString()}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+        <AuditLogViewer logs={auditLogs} />
       </div>
     </div>
   );

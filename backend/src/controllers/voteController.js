@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const Vote = require('../models/Vote');
 const Submission = require('../models/Submission');
+const AuditLog = require('../models/AuditLog');
 
 exports.castVote = async (req, res, next) => {
   try {
@@ -51,6 +52,22 @@ exports.castVote = async (req, res, next) => {
     // Atomically increment publicVoteCount
     submission.publicVoteCount = (submission.publicVoteCount || 0) + 1;
     await submission.save();
+
+    // Anomaly detector: Flag bursts (e.g. > 10 votes in last minute)
+    const recentVotes = await Vote.countDocuments({
+      submissionId: submission._id,
+      createdAt: { $gte: new Date(Date.now() - 60 * 1000) }
+    });
+
+    if (recentVotes >= 10) {
+      await AuditLog.create({
+        actorRole: 'system',
+        action: 'VOTE_ANOMALY_DETECTED',
+        targetResource: 'Submission',
+        resourceId: submission._id,
+        payload: { message: 'Velocity spike detected', recentVotes, submissionId: submission._id }
+      }).catch(() => {}); // silent fail if audit log errors
+    }
 
     return res.status(200).json({
       success: true,

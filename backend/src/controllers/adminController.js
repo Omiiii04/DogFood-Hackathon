@@ -363,7 +363,25 @@ exports.getSystemStats = async (req, res, next) => {
         User.countDocuments({ role: 'judge' }),
         Score.countDocuments(),
         JudgeAssignment.countDocuments(),
+        Score.find().populate('judge', 'fullName'),
       ]);
+
+    const judgeGroups = {};
+    scoresList.forEach(s => {
+      const jId = (s.judgeId || s.judge?._id || 'unknown').toString();
+      if (!judgeGroups[jId]) {
+        judgeGroups[jId] = { name: s.judge?.fullName || `Judge ${jId.slice(-4)}`, scores: [] };
+      }
+      judgeGroups[jId].scores.push(s.totalRawScore || s.rawCompositeScore || 0);
+    });
+
+    const judgeStats = Object.values(judgeGroups).map(g => {
+      const mean = g.scores.length ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : 0;
+      const variance = g.scores.length > 1 
+        ? g.scores.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (g.scores.length - 1)
+        : 0;
+      return { name: g.name, mean, variance, count: g.scores.length };
+    });
 
     return res.status(200).json({
       success: true,
@@ -374,6 +392,7 @@ exports.getSystemStats = async (req, res, next) => {
         totalJudges,
         totalScores,
         totalAssignments,
+        judgeStats,
       },
     });
   } catch (error) {
@@ -381,10 +400,6 @@ exports.getSystemStats = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/v1/admin/rubrics
- * Create or update event rubric criteria (organizer only).
- */
 exports.upsertRubric = async (req, res, next) => {
   try {
     if (req.user && req.user.role !== 'organizer' && req.user.role !== 'admin') {
@@ -537,10 +552,6 @@ exports.upsertRubric = async (req, res, next) => {
 };
 exports.createOrUpdateRubric = exports.upsertRubric;
 
-/**
- * GET /api/v1/admin/rubrics
- * Return active event rubric configuration.
- */
 exports.getRubric = async (req, res, next) => {
   try {
     let event = null;
@@ -637,10 +648,6 @@ exports.getRubric = async (req, res, next) => {
 };
 exports.getRubrics = exports.getRubric;
 
-/**
- * POST /api/v1/admin/events/lock-rubric
- * Freeze rubric against further modification once scoring begins.
- */
 exports.lockRubric = async (req, res, next) => {
   try {
     if (req.user && req.user.role !== 'organizer' && req.user.role !== 'admin') {
