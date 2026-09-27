@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useJudging } from '../hooks/useJudging';
 import { RubricSlider } from '../components/RubricSlider';
 import { useNotification } from '../context/NotificationContext';
+import { Modal } from '../components/Modal';
 import api from '../services/api';
-import { Award, CheckCircle, Clock, Send, Github, ExternalLink } from 'lucide-react';
+import { Award, CheckCircle, Clock, Send, Github, ExternalLink, Save } from 'lucide-react';
 import { getTrackBadgeColor } from '../utils/formatters';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 export const JudgePortal = () => {
   const { queue, rubric, loading, error, refetch } = useJudging();
@@ -14,6 +17,8 @@ export const JudgePortal = () => {
   const [criteriaScores, setCriteriaScores] = useState({});
   const [privateNotes, setPrivateNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
 
   useEffect(() => {
     if (selectedItem) {
@@ -30,7 +35,8 @@ export const JudgePortal = () => {
           initialMap[crit.name] = 5.0;
         });
         setCriteriaScores(initialMap);
-        setPrivateNotes('');
+        const draftedNotes = localStorage.getItem(`draft_notes_${selectedItem.submission?._id}`);
+        setPrivateNotes(draftedNotes || '');
       }
     }
   }, [selectedItem, rubric]);
@@ -40,6 +46,16 @@ export const JudgePortal = () => {
       setSelectedItem(queue[0]);
     }
   }, [queue, selectedItem]);
+
+  useEffect(() => {
+    if (!selectedItem?.submission?._id || selectedItem?.score) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem(`draft_notes_${selectedItem.submission._id}`, privateNotes);
+      setSaveStatus('Draft saved');
+      setTimeout(() => setSaveStatus(''), 2000);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [privateNotes, selectedItem]);
 
   const handleSliderChange = (name, val) => {
     setCriteriaScores((prev) => ({ ...prev, [name]: val }));
@@ -78,6 +94,8 @@ export const JudgePortal = () => {
 
       if (res.success) {
         addNotification('Evaluation ballot submitted successfully!', 'success');
+        localStorage.removeItem(`draft_notes_${selectedItem.submission._id}`);
+        setShowConfirmModal(false);
         refetch();
       }
     } catch (err) {
@@ -130,7 +148,7 @@ export const JudgePortal = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-4 space-y-3">
+          <div className="lg:col-span-3 space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 font-mono mb-2">
               Assigned Queue
             </h3>
@@ -177,34 +195,30 @@ export const JudgePortal = () => {
                   <h4 className="font-bold text-sm text-white line-clamp-1">
                     {item.submission?.title || 'Untitled Project'}
                   </h4>
-                  <p className="text-xs text-gray-400 line-clamp-1 mt-1">
-                    {item.submission?.tagline || 'No tagline'}
-                  </p>
                 </div>
               );
             })}
           </div>
 
-          <div className="lg:col-span-8 bg-surface border border-border-subtle rounded-2xl p-6 sm:p-8 space-y-6">
+          <div className="lg:col-span-9 bg-surface border border-border-subtle rounded-2xl p-6">
             {submission ? (
-              <>
-                <div className="border-b border-border-subtle pb-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-2xl font-bold text-white">{submission.title}</h2>
-                      <p className="text-sm text-gray-400 mt-1">{submission.tagline}</p>
-                    </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Briefing Panel */}
+                <div className="space-y-6 lg:border-r lg:border-border-subtle lg:pr-8">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white mb-2">{submission.title}</h2>
+                    <p className="text-sm text-gray-400 mb-4">{submission.tagline}</p>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-3 mb-6">
                       {submission.githubUrl && (
                         <a
                           href={submission.githubUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-2 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-white"
-                          title="View Repository"
+                          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-white text-xs font-semibold"
                         >
                           <Github className="w-4 h-4" />
+                          <span>Repository</span>
                         </a>
                       )}
                       {submission.demoVideoUrl && (
@@ -212,23 +226,32 @@ export const JudgePortal = () => {
                           href={submission.demoVideoUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-2 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-white"
-                          title="View Demo"
+                          className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-white text-xs font-semibold"
                         >
                           <ExternalLink className="w-4 h-4" />
+                          <span>Demo</span>
                         </a>
                       )}
+                    </div>
+
+                    <div className="prose prose-invert prose-sm max-w-none text-gray-300">
+                      <div
+                        dangerouslySetInnerHTML={{
+                          __html: DOMPurify.sanitize(marked(submission.description || '')),
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                {/* Sticky Rubric Panel */}
+                <div className="space-y-6 sticky top-6">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 font-mono">
-                      Rubric Scoring (Scale 1.0 – 10.0)
+                      Rubric Scoring
                     </h3>
                     <div className="text-right">
-                      <span className="text-xs text-gray-400 font-mono mr-2">Total Score:</span>
+                      <span className="text-xs text-gray-400 font-mono mr-2">Composite:</span>
                       <span className="text-xl font-bold font-mono text-emerald-400">
                         {currentTotal} / 10
                       </span>
@@ -245,37 +268,81 @@ export const JudgePortal = () => {
                       />
                     ))}
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    Private Evaluator Notes (Confidential to Judges & Organizers)
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={privateNotes}
-                    onChange={(e) => setPrivateNotes(e.target.value)}
-                    placeholder="Enter confidential evaluation feedback or rationale..."
-                    className="w-full p-3.5 rounded-xl bg-canvas border border-border-subtle text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
-                  />
-                </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-gray-300">
+                        Private Evaluator Notes
+                      </label>
+                      {saveStatus && (
+                        <span className="text-[10px] font-mono text-blue-400 flex items-center space-x-1">
+                          <Save className="w-3 h-3" />
+                          <span>{saveStatus}</span>
+                        </span>
+                      )}
+                    </div>
+                    <textarea
+                      rows={4}
+                      value={privateNotes}
+                      onChange={(e) => setPrivateNotes(e.target.value)}
+                      placeholder="Enter confidential evaluation feedback or rationale..."
+                      className="w-full p-3.5 rounded-xl bg-canvas border border-border-subtle text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
+                    />
+                  </div>
 
-                <div className="pt-4 border-t border-border-subtle flex items-center justify-end">
-                  <button
-                    onClick={handleSubmitBallot}
-                    disabled={submitting}
-                    className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm shadow-glow flex items-center space-x-2 transition-all disabled:opacity-50"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>{submitting ? 'Recording Ballot...' : 'Submit Evaluation Ballot'}</span>
-                  </button>
+                  <div className="pt-4 border-t border-border-subtle flex items-center justify-end">
+                    <button
+                      onClick={() => setShowConfirmModal(true)}
+                      disabled={submitting || selectedItem?.status === 'completed'}
+                      className="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm shadow-glow flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>{selectedItem?.status === 'completed' ? 'Ballot Recorded' : 'Submit Final Ballot'}</span>
+                    </button>
+                  </div>
                 </div>
-              </>
+              </div>
             ) : (
               <p className="text-gray-400 text-sm">Select a project from the queue to score.</p>
             )}
           </div>
         </div>
+      )}
+
+      {showConfirmModal && (
+        <Modal onClose={() => !submitting && setShowConfirmModal(false)}>
+          <div className="p-2 space-y-4">
+            <h2 className="text-xl font-bold text-white">Confirm Final Ballot</h2>
+            <p className="text-sm text-gray-300">
+              You are about to submit your final evaluation for{' '}
+              <strong className="text-white">{submission?.title}</strong>. This action will compute the
+              final weighted composite score and cannot be undone once submitted.
+            </p>
+            
+            <div className="bg-canvas border border-border-subtle rounded-xl p-4 text-center space-y-1 my-4">
+               <div className="text-xs text-gray-400 uppercase tracking-wider font-mono">Weighted Composite Score</div>
+               <div className="text-4xl font-black font-mono text-emerald-400">{currentTotal}</div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-border-subtle">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                disabled={submitting}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:text-white hover:bg-surface transition-colors"
+              >
+                Review Again
+              </button>
+              <button
+                onClick={handleSubmitBallot}
+                disabled={submitting}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold flex items-center space-x-2 transition-colors disabled:opacity-50"
+              >
+                {submitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                <span>{submitting ? 'Submitting...' : 'Confirm Submission'}</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
