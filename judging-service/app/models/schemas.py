@@ -74,6 +74,11 @@ class PairwiseRankResponse(BaseModel):
     total_comparisons: int
     iterations_converged: int
     standings: List[PairwiseStanding]
+    skill_ratings: Dict[str, float] = Field(default_factory=dict)
+    iterations: int = 0
+    converged: bool = False
+    log_likelihood: float = 0.0
+    log_likelihood_history: List[float] = Field(default_factory=list)
 
 class AnomalyDetectionRequest(BaseModel):
     submission_id: str
