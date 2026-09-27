@@ -6,6 +6,7 @@ const Event = require('../models/Event');
 const Rubric = require('../models/Rubric');
 const AuditLog = require('../models/AuditLog');
 const crypto = require('crypto');
+const PairwiseComparison = require('../models/PairwiseComparison');
 
 exports.getAssignedQueue = async (req, res, next) => {
   try {
@@ -518,3 +519,155 @@ exports.getEventRubric = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Record a head-to-head pairwise comparison between two projects (A > B or B > A).
+ * POST /api/v1/judging/pairwise
+ */
+exports.recordPairwiseComparison = async (req, res, next) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Authentication required.',
+      });
+    }
+
+    const {
+      submissionA,
+      submissionB,
+      submission_a,
+      submission_b,
+      projectA,
+      projectB,
+      winner,
+      notes,
+      eventId,
+    } = req.body;
+
+    const subA = submissionA || submission_a || projectA;
+    const subB = submissionB || submission_b || projectB;
+
+    if (!subA || !subB) {
+      return res.status(400).json({
+        success: false,
+        error: 'Both submissionA and submissionB are required.',
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(subA) || !mongoose.Types.ObjectId.isValid(subB)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid submission ID format.',
+      });
+    }
+
+    if (subA.toString() === subB.toString()) {
+      return res.status(400).json({
+        success: false,
+        error: 'submissionA and submissionB must be distinct projects.',
+      });
+    }
+
+    if (!winner) {
+      return res.status(400).json({
+        success: false,
+        error: 'Winner is required.',
+      });
+    }
+
+    let resolvedWinner = winner;
+    const winnerStr = winner.toString().toLowerCase();
+    if (
+      winnerStr === 'submission_a' ||
+      winnerStr === 'submissiona' ||
+      winnerStr === 'projecta' ||
+      winnerStr === 'a'
+    ) {
+      resolvedWinner = subA;
+    } else if (
+      winnerStr === 'submission_b' ||
+      winnerStr === 'submissionb' ||
+      winnerStr === 'projectb' ||
+      winnerStr === 'b'
+    ) {
+      resolvedWinner = subB;
+    }
+
+    if (
+      resolvedWinner.toString() !== subA.toString() &&
+      resolvedWinner.toString() !== subB.toString()
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Winner must be either submissionA or submissionB.',
+      });
+    }
+
+    // Verify both submissions exist in the database
+    const [docA, docB] = await Promise.all([
+      Submission.findById(subA),
+      Submission.findById(subB),
+    ]);
+
+    if (!docA || !docB) {
+      return res.status(404).json({
+        success: false,
+        error: 'One or both target submissions could not be found.',
+      });
+    }
+
+    const resolvedEventId = eventId || docA.eventId || docA.event || null;
+
+    const comparison = await PairwiseComparison.create({
+      judge: userId,
+      submissionA: subA,
+      submissionB: subB,
+      winner: resolvedWinner,
+      notes: notes || '',
+      eventId: resolvedEventId,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Pairwise comparison successfully recorded.',
+      data: { comparison },
+      comparison,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get pairwise comparisons for an event or judge.
+ * GET /api/v1/judging/pairwise
+ */
+exports.getPairwiseComparisons = async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.user?.role === 'judge') {
+      filter.judge = req.user._id || req.user.id;
+    }
+    if (req.query.eventId) {
+      filter.eventId = req.query.eventId;
+    }
+
+    const comparisons = await PairwiseComparison.find(filter)
+      .populate('judge', 'name email role')
+      .populate('submissionA', 'title track')
+      .populate('submissionB', 'title track')
+      .populate('winner', 'title track')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: { comparisons },
+      comparisons,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

@@ -670,14 +670,75 @@ exports.exportJSON = async (req, res, next) => {
 
 exports.getAuditLogs = async (req, res, next) => {
   try {
-    const logs = await AuditLog.find()
-      .populate('actorId', 'fullName email role')
-      .sort({ timestamp: -1 })
-      .limit(100);
+    const { action, targetResource, actor, actorId, page = 1, limit = 100, startDate, endDate, search } = req.query;
+
+    const filter = {};
+    if (action) {
+      filter.action = action;
+    }
+    if (targetResource) {
+      filter.targetResource = targetResource;
+    }
+    const targetActor = actor || actorId;
+    if (targetActor && mongoose.Types.ObjectId.isValid(targetActor)) {
+      filter.$or = [{ actor: targetActor }, { actorId: targetActor }];
+    }
+    if (startDate || endDate) {
+      filter.timestamp = {};
+      if (startDate) filter.timestamp.$gte = new Date(startDate);
+      if (endDate) filter.timestamp.$lte = new Date(endDate);
+    }
+    if (search) {
+      filter.$or = [
+        { action: { $regex: search, $options: 'i' } },
+        { targetResource: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [logs, total] = await Promise.all([
+      AuditLog.find(filter)
+        .populate('actor', 'name fullName email role')
+        .populate('actorId', 'name fullName email role')
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      AuditLog.countDocuments(filter),
+    ]);
+
+    const formattedLogs = logs.map((log) => {
+      const actorObj = log.actor || log.actorId;
+      return {
+        ...log,
+        actor: actorObj,
+        actorId: actorObj?._id || log.actorId || log.actor,
+        actorRole: log.actorRole || actorObj?.role || 'system',
+        targetId: log.targetId || log.resourceId,
+        resourceId: log.resourceId || log.targetId,
+        ipAddress: log.ipAddress || log.ipHash,
+        ipHash: log.ipHash || log.ipAddress,
+        payload: log.payload && Object.keys(log.payload).length > 0
+          ? log.payload
+          : { previousState: log.previousState, newState: log.newState },
+      };
+    });
 
     return res.status(200).json({
       success: true,
-      data: { logs },
+      data: {
+        logs: formattedLogs,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
+      },
+      logs: formattedLogs,
+      auditLogs: formattedLogs,
+      total,
     });
   } catch (error) {
     next(error);
@@ -1351,3 +1412,92 @@ exports.getAnalytics = async (req, res, next) => {
 };
 
 exports.getOrganizerAnalytics = exports.getAnalytics;
+
+/**
+ * Administrative score override
+ * PUT /api/v1/admin/scores/:scoreId/override
+ */
+exports.overrideScore = async (req, res, next) => {
+  try {
+    const { scoreId } = req.params;
+    const { rawCompositeScore, criteriaScores, privateNotes, normalizedScore, zScore } = req.body;
+
+    const score = await Score.findById(scoreId);
+    if (!score) {
+      return res.status(404).json({
+        success: false,
+        error: 'Score not found.',
+      });
+    }
+
+    // Attach admin audit context for Score model middleware
+    score._actor = req.user?._id;
+    score._actorId = req.user?._id;
+    score._actorRole = req.user?.role || 'admin';
+    score._ipAddress = req.ip || '127.0.0.1';
+    score._auditAction = 'SCORE_OVERRIDE';
+
+    if (rawCompositeScore !== undefined) score.rawCompositeScore = rawCompositeScore;
+    if (criteriaScores !== undefined) score.criteriaScores = criteriaScores;
+    if (privateNotes !== undefined) score.privateNotes = privateNotes;
+    if (normalizedScore !== undefined) score.normalizedScore = normalizedScore;
+    if (zScore !== undefined) score.zScore = zScore;
+
+    await score.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Score successfully overridden.',
+      data: { score },
+      score,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Administrative user role elevation
+ * PUT /api/v1/admin/users/:userId/role
+ */
+exports.elevateUserRole = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    if (!role || !['participant', 'judge', 'organizer', 'admin'].includes(role)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid role is required (participant, judge, organizer, admin).',
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found.',
+      });
+    }
+
+    // Attach admin audit context for User model middleware
+    user._actor = req.user?._id;
+    user._actorId = req.user?._id;
+    user._actorRole = req.user?.role || 'admin';
+    user._ipAddress = req.ip || '127.0.0.1';
+    user._auditAction = 'ROLE_ELEVATION';
+
+    user.role = role;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `User role successfully updated to ${role}.`,
+      data: { user },
+      user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

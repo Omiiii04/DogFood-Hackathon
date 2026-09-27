@@ -25,6 +25,11 @@ const isolationGuard = async (req, res, next) => {
       });
     }
 
+    // Allow pairwise comparison endpoint without single submission assignment guard
+    if (req.path === '/pairwise' || req.originalUrl?.includes('/pairwise')) {
+      return next();
+    }
+
     // Resolve target submissionId from body, params, query, or scoreId
     let submissionId =
       req.body?.submissionId ||

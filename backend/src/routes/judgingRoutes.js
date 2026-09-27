@@ -40,4 +40,17 @@ router.get(
   judgingController.getScoreBySubmissionId
 );
 
+// Submit pairwise comparison (head-to-head project comparisons: A > B)
+router.post(
+  '/pairwise',
+  roleGuard('judge', 'organizer', 'admin'),
+  judgingController.recordPairwiseComparison
+);
+
+router.get(
+  '/pairwise',
+  roleGuard('judge', 'organizer', 'admin'),
+  judgingController.getPairwiseComparisons
+);
+
 module.exports = router;

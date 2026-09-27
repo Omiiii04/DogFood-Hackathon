@@ -24,4 +24,8 @@ router.get('/rubric', adminController.getRubric);
 router.post('/events/lock-rubric', adminController.lockRubric);
 router.post('/lock-rubric', adminController.lockRubric);
 
+// Administrative overrides
+router.put('/scores/:scoreId/override', adminController.overrideScore);
+router.put('/users/:userId/role', adminController.elevateUserRole);
+
 module.exports = router;
