@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LeaderboardTable } from '../components/LeaderboardTable';
 import { ScoreDistributionChart } from '../components/ScoreDistributionChart';
 import { JudgeVarianceChart } from '../components/JudgeVarianceChart';
+import { AuditLogViewer } from '../components/AuditLogViewer';
 import { useNotification } from '../context/NotificationContext';
 import api from '../services/api';
 import {
@@ -277,27 +278,7 @@ export const AdminDashboard = () => {
           <span>Security Audit Trail (Tamper-Evident)</span>
         </h3>
 
-        <div className="divide-y divide-border-subtle font-mono text-xs">
-          {auditLogs.length === 0 ? (
-            <p className="py-4 text-gray-500 font-sans text-sm">No audit events recorded yet.</p>
-          ) : (
-            auditLogs.slice(0, 10).map((log) => (
-              <div key={log._id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center space-x-3">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-800 text-blue-300">
-                    {log.action}
-                  </span>
-                  <span className="text-gray-300">
-                    by <strong className="text-white">{log.actorId?.fullName || log.actorRole}</strong>
-                  </span>
-                </div>
-                <div className="text-gray-500">
-                  {new Date(log.timestamp).toLocaleString()}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+        <AuditLogViewer logs={auditLogs} />
       </div>
     </div>
   );
