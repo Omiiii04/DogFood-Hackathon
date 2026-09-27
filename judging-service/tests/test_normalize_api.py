@@ -88,7 +88,6 @@ def test_normalize_is_deterministic_and_forwards_bayesian_prior():
 
 
 def test_normalize_does_not_expose_unrelated_routes():
-    assert client.post("/api/v1/pairwise-rank", json={}).status_code == 404
     assert client.post("/api/v1/detect-anomaly", json={}).status_code == 404
 
 

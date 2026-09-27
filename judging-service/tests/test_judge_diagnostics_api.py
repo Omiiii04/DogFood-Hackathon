@@ -127,11 +127,11 @@ def test_judge_diagnostics_is_deterministic():
 
 
 def test_judge_diagnostics_does_not_expose_unrelated_routes():
-    assert client.post("/api/v1/pairwise-rank", json={}).status_code == 404
     assert set(app.openapi()["paths"]) == {
         "/health",
         "/api/v1/normalize",
         "/api/v1/judge-diagnostics",
+        "/api/v1/pairwise-rank",
         "/api/v1/voting-anomalies",
     }
 

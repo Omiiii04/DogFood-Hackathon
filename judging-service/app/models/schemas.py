@@ -61,6 +61,7 @@ class PairwiseComparison(BaseModel):
 
 class PairwiseRankRequest(BaseModel):
     comparisons: List[PairwiseComparison]
+    project_ids: Optional[List[str]] = None
     max_iterations: int = 100
     tolerance: float = 1e-6
 
