@@ -101,6 +101,7 @@ export const ProjectCard = ({ submission, onOpenModal }) => {
           <button
             onClick={handleVote}
             disabled={isVoting}
+            aria-label="Upvote project"
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-rose-400 hover:border-rose-800/60 active:scale-95 transition-all"
           >
             <Heart className={`w-3.5 h-3.5 ${votes > 0 ? 'text-rose-500 fill-rose-500' : ''}`} />
