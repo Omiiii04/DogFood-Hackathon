@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useJudging } from '../hooks/useJudging';
 import { RubricSlider } from '../components/RubricSlider';
 import { useNotification } from '../context/NotificationContext';
-import { renderMarkdownToSafeHTML } from '../utils/markdownSanitizer';
 import api from '../services/api';
-import { Award, CheckCircle, Clock, Send, ShieldAlert, FileText, Github, ExternalLink } from 'lucide-react';
+import { Award, CheckCircle, Clock, Send, Github, ExternalLink } from 'lucide-react';
 import { getTrackBadgeColor } from '../utils/formatters';
 
 export const JudgePortal = () => {
@@ -16,7 +15,6 @@ export const JudgePortal = () => {
   const [privateNotes, setPrivateNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // When selected project changes, initialize sliders from existing score or default
   useEffect(() => {
     if (selectedItem) {
       if (selectedItem.score) {
@@ -29,7 +27,7 @@ export const JudgePortal = () => {
       } else {
         const initialMap = {};
         rubric.forEach((crit) => {
-          initialMap[crit.name] = 5.0; // Default midpoint score
+          initialMap[crit.name] = 5.0;
         });
         setCriteriaScores(initialMap);
         setPrivateNotes('');
@@ -37,7 +35,6 @@ export const JudgePortal = () => {
     }
   }, [selectedItem, rubric]);
 
-  // Set default selection to first item in queue
   useEffect(() => {
     if (queue.length > 0 && !selectedItem) {
       setSelectedItem(queue[0]);
@@ -48,7 +45,6 @@ export const JudgePortal = () => {
     setCriteriaScores((prev) => ({ ...prev, [name]: val }));
   };
 
-  // Compute live total weighted score
   const computeTotalWeightedScore = () => {
     if (!rubric.length) return 0;
     let totalScore = 0;
@@ -112,7 +108,6 @@ export const JudgePortal = () => {
 
   return (
     <div className="space-y-6 py-6">
-      {/* Header */}
       <div className="pb-6 border-b border-border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2 text-xs font-mono text-purple-400 uppercase tracking-wider mb-1">
@@ -135,7 +130,6 @@ export const JudgePortal = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Assigned Queue list (4 cols) */}
           <div className="lg:col-span-4 space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 font-mono mb-2">
               Assigned Queue
@@ -191,7 +185,6 @@ export const JudgePortal = () => {
             })}
           </div>
 
-          {/* Right Column: Scoring Sliders & Submission Details (8 cols) */}
           <div className="lg:col-span-8 bg-surface border border-border-subtle rounded-2xl p-6 sm:p-8 space-y-6">
             {submission ? (
               <>
@@ -203,9 +196,9 @@ export const JudgePortal = () => {
                     </div>
 
                     <div className="flex items-center space-x-2">
-                      {submission.repoUrl && (
+                      {submission.githubUrl && (
                         <a
-                          href={submission.repoUrl}
+                          href={submission.githubUrl}
                           target="_blank"
                           rel="noreferrer"
                           className="p-2 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-white"
@@ -214,9 +207,9 @@ export const JudgePortal = () => {
                           <Github className="w-4 h-4" />
                         </a>
                       )}
-                      {submission.demoUrl && (
+                      {submission.demoVideoUrl && (
                         <a
-                          href={submission.demoUrl}
+                          href={submission.demoVideoUrl}
                           target="_blank"
                           rel="noreferrer"
                           className="p-2 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-white"
@@ -229,7 +222,6 @@ export const JudgePortal = () => {
                   </div>
                 </div>
 
-                {/* Weighted Criteria Sliders */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400 font-mono">
@@ -255,7 +247,6 @@ export const JudgePortal = () => {
                   </div>
                 </div>
 
-                {/* Private Notes */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 mb-1.5">
                     Private Evaluator Notes (Confidential to Judges & Organizers)
@@ -269,7 +260,6 @@ export const JudgePortal = () => {
                   />
                 </div>
 
-                {/* Submit Ballot Action */}
                 <div className="pt-4 border-t border-border-subtle flex items-center justify-end">
                   <button
                     onClick={handleSubmitBallot}
