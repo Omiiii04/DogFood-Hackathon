@@ -22,9 +22,10 @@ export const AdminDashboard = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [assigning, setAssigning] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [trackFilter, setTrackFilter] = useState('All Tracks');
@@ -88,8 +89,27 @@ export const AdminDashboard = () => {
     }
   };
 
-  const handleExportCSV = () => {
-    window.open('/api/v1/admin/export/csv', '_blank');
+  const handleExport = async (format) => {
+    setExporting(true);
+    setShowExportMenu(false);
+    try {
+      const data = await api.get(`/admin/export/${format}`, { responseType: 'blob' });
+      const blob = new Blob([data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `dogfood-2026-standings.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      addNotification(`Successfully exported results as ${format.toUpperCase()}`, 'success');
+    } catch (err) {
+      addNotification(err.message, 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) {
@@ -141,12 +161,45 @@ export const AdminDashboard = () => {
           </button>
 
           <button
-            onClick={handleExportCSV}
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-glow flex items-center space-x-2 transition-all"
+            onClick={handleRunNormalization}
+            disabled={normalizing}
+            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-glow flex items-center space-x-2 transition-all disabled:opacity-50"
           >
-            <Download className="w-4 h-4" />
-            <span>Export CSV</span>
+            <Cpu className="w-4 h-4" />
+            <span>{normalizing ? 'Computing...' : 'Run Normalization'}</span>
           </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={exporting}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-glow flex items-center space-x-2 transition-all disabled:opacity-50"
+            >
+              {exporting ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>{exporting ? 'Exporting...' : 'Export Results'}</span>
+            </button>
+            
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-32 bg-surface-raised border border-border-subtle rounded-xl shadow-xl overflow-hidden z-50">
+                <button
+                  onClick={() => handleExport('csv')}
+                  className="w-full text-left px-4 py-2.5 text-xs text-white hover:bg-surface transition-colors border-b border-border-subtle"
+                >
+                  Export as CSV
+                </button>
+                <button
+                  onClick={() => handleExport('json')}
+                  className="w-full text-left px-4 py-2.5 text-xs text-white hover:bg-surface transition-colors"
+                >
+                  Export as JSON
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

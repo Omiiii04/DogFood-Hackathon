@@ -11,6 +11,7 @@ router.post('/assign-judges', adminController.assignJudges);
 router.post('/normalize-scores', adminController.runNormalization);
 router.get('/leaderboard', adminController.getLeaderboard);
 router.get('/export/csv', adminController.exportCSV);
+router.get('/export/json', adminController.exportJSON);
 router.get('/audit-logs', adminController.getAuditLogs);
 router.get('/stats', adminController.getSystemStats);
 
