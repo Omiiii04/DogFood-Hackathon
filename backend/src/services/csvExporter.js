@@ -1,6 +1,3 @@
-/**
- * Converts tournament standings array into RFC 4180 compliant CSV string.
- */
 function generateStandingsCSV(standings) {
   const headers = [
     'Rank',
@@ -36,7 +33,7 @@ function generateStandingsCSV(standings) {
     ].join(',');
   });
 
-  return [headers.join(','), ...rows].join('\r\n');
+  return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
 }
 
 module.exports = {

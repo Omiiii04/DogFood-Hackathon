@@ -281,9 +281,57 @@ exports.exportCSV = async (req, res, next) => {
 
     const csvContent = generateStandingsCSV(standings);
 
-    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="dogfood-2026-standings.csv"');
     return res.status(200).send(csvContent);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.exportJSON = async (req, res, next) => {
+  try {
+    const submissions = await Submission.find({ status: { $in: ['submitted', 'locked'] } })
+      .populate('teamId', 'name')
+      .lean();
+
+    const scores = await Score.find().lean();
+    const scoresBySub = {};
+    scores.forEach((s) => {
+      const subId = s.submissionId.toString();
+      if (!scoresBySub[subId]) scoresBySub[subId] = [];
+      scoresBySub[subId].push(s);
+    });
+
+    const standings = submissions.map((sub) => {
+      const subScores = scoresBySub[sub._id.toString()] || [];
+      const ballotCount = subScores.length;
+      const rawMean =
+        ballotCount > 0
+          ? subScores.reduce((sum, s) => sum + s.totalRawScore, 0) / ballotCount
+          : 0;
+      const normalizedScore =
+        ballotCount > 0 ? subScores[0].normalizedScore : null;
+
+      return {
+        id: sub._id,
+        title: sub.title,
+        teamName: sub.teamId?.name || 'Unknown Team',
+        track: sub.track,
+        repoUrl: sub.repoUrl,
+        ballotCount,
+        rawMean,
+        normalizedScore,
+        publicVoteCount: sub.publicVoteCount || 0,
+      };
+    });
+
+    standings.sort((a, b) => (b.normalizedScore || b.rawMean) - (a.normalizedScore || a.rawMean));
+    standings.forEach((s, idx) => (s.rank = idx + 1));
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="dogfood-2026-standings.json"');
+    return res.status(200).send(JSON.stringify(standings, null, 2));
   } catch (error) {
     next(error);
   }
