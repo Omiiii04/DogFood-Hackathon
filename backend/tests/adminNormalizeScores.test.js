@@ -18,11 +18,12 @@ describe('Admin Controller - POST /api/v1/admin/normalize-scores Endpoint', () =
   const dummyJudge2 = new mongoose.Types.ObjectId();
   const dummySub1 = new mongoose.Types.ObjectId();
   const dummySub2 = new mongoose.Types.ObjectId();
+  const activeEventId = new mongoose.Types.ObjectId();
 
   beforeEach(() => {
     jest.restoreAllMocks();
     jest.spyOn(AuditLog, 'create').mockResolvedValue(true);
-    jest.spyOn(Event, 'findOne').mockResolvedValue({ _id: new mongoose.Types.ObjectId(), status: 'active' });
+    jest.spyOn(Event, 'findOne').mockResolvedValue({ _id: activeEventId, status: 'active' });
     jest.spyOn(Submission, 'find').mockResolvedValue([]);
 
     req = {
@@ -82,7 +83,7 @@ describe('Admin Controller - POST /api/v1/admin/normalize-scores Endpoint', () =
       );
     });
 
-    it('should call fastApiClient.normalizeScores(scores), store in LeaderboardCache, update scores, and return standings', async () => {
+    it('should pass the resolved event id to FastAPI, store results, update scores, and return standings', async () => {
       const mockCompletedScores = [
         {
           _id: new mongoose.Types.ObjectId(),
@@ -156,7 +157,7 @@ describe('Admin Controller - POST /api/v1/admin/normalize-scores Endpoint', () =
       await adminController.runNormalization(req, res, next);
 
       // Verify fastApiClient.normalizeScores called with scores
-      expect(fastApiNormalizeSpy).toHaveBeenCalledWith(mockCompletedScores);
+      expect(fastApiNormalizeSpy).toHaveBeenCalledWith(activeEventId.toString(), mockCompletedScores);
 
       // Verify LeaderboardCache updated with normalized scores, ranks, and calibrations
       expect(cacheSpy).toHaveBeenCalledWith(

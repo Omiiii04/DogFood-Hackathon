@@ -157,8 +157,8 @@ exports.runNormalization = async (req, res, next) => {
       });
     }
 
-    // 2. Calls fastApiClient.normalizeScores(scores)
-    const result = await fastApiClient.normalizeScores(scores);
+    // 2. Calls FastAPI with the selected event id and completed scores
+    const result = await fastApiClient.normalizeScores(eventId, scores);
 
     // Format standings and judge calibrations
     const formattedStandings = (result.standings || []).map((s) => ({
