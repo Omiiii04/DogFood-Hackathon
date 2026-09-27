@@ -1,34 +1,11 @@
-import React, { useState } from 'react';
-import { ExternalLink, Github, Heart } from 'lucide-react';
+import React from 'react';
+import { ExternalLink, Github } from 'lucide-react';
 import { getTrackBadgeColor } from '../utils/formatters';
-import api from '../services/api';
-import { useNotification } from '../context/NotificationContext';
+import { UpvoteWidget } from './UpvoteWidget';
 
 const THUMBNAIL_FALLBACK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='176'%3E%3Crect width='600' height='176' fill='%230f172a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%234b5563' font-size='12' font-family='monospace'%3ENo Preview%3C/text%3E%3C/svg%3E";
 
 export const ProjectCard = ({ submission, onOpenModal }) => {
-  const [votes, setVotes] = useState(submission.publicVoteCount || 0);
-  const [isVoting, setIsVoting] = useState(false);
-  const { addNotification } = useNotification();
-
-  const handleVote = async (e) => {
-    e.stopPropagation();
-    if (isVoting) return;
-
-    setIsVoting(true);
-    try {
-      const res = await api.post('/votes', { submissionId: submission._id });
-      if (res.success) {
-        setVotes(res.data.newVoteCount);
-        addNotification('Vote counted successfully!', 'success');
-      }
-    } catch (err) {
-      addNotification(err.message, 'error');
-    } finally {
-      setIsVoting(false);
-    }
-  };
-
   return (
     <div
       onClick={() => onOpenModal && onOpenModal(submission)}
@@ -98,14 +75,7 @@ export const ProjectCard = ({ submission, onOpenModal }) => {
             )}
           </div>
 
-          <button
-            onClick={handleVote}
-            disabled={isVoting}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-rose-400 hover:border-rose-800/60 active:scale-95 transition-all"
-          >
-            <Heart className={`w-3.5 h-3.5 ${votes > 0 ? 'text-rose-500 fill-rose-500' : ''}`} />
-            <span className="font-mono font-bold text-xs">{votes}</span>
-          </button>
+          <UpvoteWidget submission={submission} size="sm" />
         </div>
       </div>
     </div>
