@@ -27,13 +27,92 @@ const PORT = process.env.PORT || 5000;
 // Security & Parsing Middleware
 app.use(
   helmet({
+    // Allow static image thumbnails to be embedded across origins (frontend on port 3000)
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    // Air-gap network hardening: prevent speculative DNS lookups
+    dnsPrefetchControl: { allow: false },
+    // Prevent clickjacking & framing
+    frameguard: { action: 'deny' },
+    // Strict MIME-type sniffing prevention
+    xContentTypeOptions: true,
+    // Air-gap strict referrer policy
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    // Disallow Flash/Acrobat cross-domain policies
+    permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    // Hide server technology
+    hidePoweredBy: true,
+    // Content Security Policy
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: [
+          "'self'",
+          'data:',
+          'blob:',
+          'http://localhost:5000',
+          'http://127.0.0.1:5000',
+          'http://localhost:3000',
+          'http://127.0.0.1:3000',
+        ],
+        connectSrc: [
+          "'self'",
+          'http://localhost:3000',
+          'http://127.0.0.1:3000',
+          'http://localhost:5000',
+          'http://127.0.0.1:5000',
+        ],
+        fontSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        frameSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
   })
 );
+
+// Whitelisted CORS configuration with explicit origins, methods, and exposed headers
+const clientUrlEnv = process.env.CLIENT_URL || 'http://localhost:3000,http://127.0.0.1:3000';
+const configuredOrigins = clientUrlEnv
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+if (!configuredOrigins.includes('http://localhost:3000')) configuredOrigins.push('http://localhost:3000');
+if (!configuredOrigins.includes('http://127.0.0.1:3000')) configuredOrigins.push('http://127.0.0.1:3000');
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, Jest tests)
+      if (!origin) return callback(null, true);
+      const normalized = origin.replace(/\/+$/, '');
+      if (configuredOrigins.includes(normalized)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS origin '${origin}' not allowed.`));
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'Accept',
+      'X-CSRF-Token',
+      'Cache-Control',
+      'Pragma',
+    ],
+    exposedHeaders: [
+      'Content-Disposition',
+      'Content-Type',
+      'Content-Length',
+      'X-Total-Count',
+    ],
+    maxAge: 86400, // 24 hours preflight cache
   })
 );
 app.use(express.json({ limit: '10mb' }));

@@ -1,4 +1,13 @@
 const errorHandler = (err, req, res, next) => {
+  if (err.message && err.message.includes('CORS origin')) {
+    return res.status(403).json({
+      success: false,
+      error: err.message,
+      statusCode: 403,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   console.error('[Application Error]:', err);
 
   const statusCode = res.statusCode && res.statusCode !== 200 ? res.statusCode : err.statusCode || 500;
