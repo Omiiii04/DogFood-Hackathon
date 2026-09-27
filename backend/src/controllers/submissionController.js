@@ -5,9 +5,6 @@ const Event = require('../models/Event');
 const AuditLog = require('../models/AuditLog');
 const crypto = require('crypto');
 
-/**
- * Helper to resolve team from req.user
- */
 const resolveUserTeam = async (reqUser) => {
   if (!reqUser) return null;
   const userId = (reqUser._id || reqUser.id)?.toString();
@@ -27,7 +24,7 @@ const resolveUserTeam = async (reqUser) => {
       if (typeof reqUser.save === 'function') {
         try {
           await reqUser.save();
-        } catch (_) {}
+        } catch (_) { }
       }
     }
   }
@@ -221,7 +218,13 @@ exports.finalizeSubmission = async (req, res, next) => {
       }
     }
 
-    // Check event.submissionDeadline: if current server time > deadline, return 423 Locked
+    if (submission && (submission.status === 'submitted' || submission.status === 'locked')) {
+      return res.status(423).json({
+        success: false,
+        error: 'This submission is locked and can no longer be edited.',
+      });
+    }
+
     let event = null;
     if (submission.event) {
       event = await Event.findById(submission.event);
@@ -244,7 +247,6 @@ exports.finalizeSubmission = async (req, res, next) => {
       }
     }
 
-    // Apply any updates passed in req.body
     if (req.body) {
       if (req.body.title !== undefined) submission.title = req.body.title;
       if (req.body.pitch !== undefined) {
@@ -267,7 +269,6 @@ exports.finalizeSubmission = async (req, res, next) => {
       else if (req.body.thumbnailPath !== undefined) submission.thumbnailUrl = req.body.thumbnailPath;
     }
 
-    // Validate required fields: Title, Pitch, Track, Description (>= 100 characters)
     const title = (submission.title || '').trim();
     const pitch = (submission.pitch || submission.tagline || '').trim();
     const track = (submission.track || '').trim();
@@ -290,12 +291,10 @@ exports.finalizeSubmission = async (req, res, next) => {
       });
     }
 
-    // Flip status to 'submitted', set submittedAt = new Date()
     submission.status = 'submitted';
     submission.submittedAt = new Date();
     await submission.save();
 
-    // Mark team hasSubmitted = true
     const teamIdToUpdate = submission.team?._id || submission.team;
     if (teamIdToUpdate) {
       const teamDoc = (team && team._id?.toString() === teamIdToUpdate.toString())
@@ -309,7 +308,6 @@ exports.finalizeSubmission = async (req, res, next) => {
       }
     }
 
-    // Log action to AuditLog
     try {
       const ipHash = crypto.createHash('sha256').update(req.ip || '127.0.0.1').digest('hex');
       await AuditLog.create({
@@ -321,7 +319,7 @@ exports.finalizeSubmission = async (req, res, next) => {
         payload: { submissionId: submission._id, title: submission.title },
         ipHash,
       });
-    } catch (_) {}
+    } catch (_) { }
 
     return res.status(200).json({
       success: true,
