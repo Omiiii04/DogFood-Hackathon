@@ -21,7 +21,6 @@ export const RubricSlider = ({ criterion, value, onChange }) => {
         </div>
       </div>
 
-      {/* Interactive slider */}
       <input
         type="range"
         min={criterion.scaleMin || 1.0}
