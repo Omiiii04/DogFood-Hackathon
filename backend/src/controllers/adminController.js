@@ -6,9 +6,11 @@ const JudgeAssignment = require('../models/JudgeAssignment');
 const Event = require('../models/Event');
 const Rubric = require('../models/Rubric');
 const AuditLog = require('../models/AuditLog');
+const LeaderboardCache = require('../models/LeaderboardCache');
 const crypto = require('crypto');
 const { solveJudgeAssignments } = require('../services/assignmentSolver');
-const { normalizeScores } = require('../services/fastApiClient');
+const fastApiClient = require('../services/fastApiClient');
+const { normalizeScores } = fastApiClient;
 const { generateStandingsCSV } = require('../services/csvExporter');
 
 exports.assignJudges = async (req, res, next) => {
@@ -115,28 +117,101 @@ exports.assignJudges = async (req, res, next) => {
 
 exports.runNormalization = async (req, res, next) => {
   try {
-    const activeEvent = await Event.findOne({ status: 'active' });
-    const eventId = activeEvent?._id || 'hackathon-2026';
-
-    const scores = await Score.find();
-    if (scores.length === 0) {
-      return res.status(400).json({
+    if (req.user && req.user.role !== 'organizer' && req.user.role !== 'admin') {
+      return res.status(403).json({
         success: false,
-        error: 'No judge score ballots found to normalize.',
+        error: 'Forbidden: Organizer or Admin permissions required.',
       });
     }
 
-    // Call FastAPI normalization microservice
-    const result = await normalizeScores(eventId, scores, 3.0);
+    let eventId = req.body?.eventId || req.query?.eventId;
+    if (!eventId) {
+      const activeEvent = await Event.findOne({ status: 'active' });
+      if (activeEvent) {
+        eventId = activeEvent._id.toString();
+      }
+    }
+    if (!eventId) {
+      eventId = 'hackathon-2026';
+    }
 
-    // Save normalized score back to each score and submission
-    if (result && result.standings) {
-      for (const standing of result.standings) {
+    // 1. Queries all completed scores (excluding in-progress drafts)
+    const scoreFilter = { isFinal: { $ne: false } };
+    if (req.body?.eventId) {
+      const eventSubmissions = await Submission.find({ event: req.body.eventId }).select('_id');
+      if (eventSubmissions && eventSubmissions.length > 0) {
+        scoreFilter.submission = { $in: eventSubmissions.map((s) => s._id) };
+      }
+    }
+
+    const scores = await Score.find(scoreFilter);
+    if (!scores || scores.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No completed scores found to normalize.',
+      });
+    }
+
+    // 2. Calls fastApiClient.normalizeScores(scores)
+    const result = await fastApiClient.normalizeScores(scores);
+
+    // Format standings and judge calibrations
+    const formattedStandings = (result.standings || []).map((s) => ({
+      submissionId: s.submission_id || s.submissionId,
+      submission_id: s.submission_id || s.submissionId,
+      rank: s.rank,
+      normalizedScore: s.normalized_score ?? s.normalizedScore,
+      normalized_score: s.normalized_score ?? s.normalizedScore,
+      rawMean: s.raw_mean ?? s.rawMean,
+      raw_mean: s.raw_mean ?? s.rawMean,
+      zScore: s.z_mean ?? s.z_score_mean ?? s.zScore,
+      z_score_mean: s.z_score_mean ?? s.z_mean ?? s.zScore,
+      z_mean: s.z_mean ?? s.z_score_mean ?? s.zScore,
+      ballotCount: s.ballot_count ?? s.ballotCount,
+      ballot_count: s.ballot_count ?? s.ballotCount,
+    }));
+
+    const formattedCalibrations = (result.judge_calibrations || result.judgeCalibrations || []).map((c) => ({
+      judgeId: c.judge_id || c.judgeId,
+      judge_id: c.judge_id || c.judgeId,
+      sampleSize: c.sample_size ?? c.sampleSize,
+      sample_size: c.sample_size ?? c.sampleSize,
+      rawMean: c.raw_mean ?? c.rawMean,
+      raw_mean: c.raw_mean ?? c.rawMean,
+      rawStd: c.raw_std ?? c.rawStd,
+      raw_std: c.raw_std ?? c.rawStd,
+      bias: c.bias,
+    }));
+
+    // 3. Stores normalized scores, ranks, and judge calibrations in backend/src/models/LeaderboardCache.js
+    await LeaderboardCache.findOneAndUpdate(
+      { eventId: eventId.toString() },
+      {
+        eventId: eventId.toString(),
+        standings: formattedStandings,
+        judgeCalibrations: formattedCalibrations,
+        judge_calibrations: formattedCalibrations,
+        algorithm: result.algorithm || 'z_score_bayesian_shrinkage',
+        totalSubmissions: result.total_submissions ?? formattedStandings.length,
+        total_submissions: result.total_submissions ?? formattedStandings.length,
+        totalScoresProcessed: result.total_scores_processed ?? scores.length,
+        total_scores_processed: result.total_scores_processed ?? scores.length,
+        isFallback: !!result.is_fallback,
+        is_fallback: !!result.is_fallback,
+        cachedAt: new Date(),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    // Save normalized score back to each score document
+    for (const standing of formattedStandings) {
+      const subId = standing.submissionId;
+      if (subId) {
         await Score.updateMany(
-          { submissionId: standing.submission_id },
-          { 
-            normalizedScore: standing.normalized_score,
-            zScore: standing.z_mean
+          { $or: [{ submission: subId }, { submissionId: subId }] },
+          {
+            normalizedScore: standing.normalizedScore,
+            zScore: standing.zScore,
           }
         );
       }
@@ -144,25 +219,43 @@ exports.runNormalization = async (req, res, next) => {
 
     // Audit log
     const ipHash = crypto.createHash('sha256').update(req.ip || '127.0.0.1').digest('hex');
-    await AuditLog.create({
-      actorId: req.user._id,
-      actorRole: req.user.role,
-      action: 'NORMALIZATION_EXECUTED',
-      targetResource: 'Score',
-      resourceId: req.user._id,
-      payload: { totalProcessed: result.total_scores_processed },
-      ipHash,
-    });
+    if (req.user) {
+      await AuditLog.create({
+        actorId: req.user._id,
+        actorRole: req.user.role || 'admin',
+        action: 'NORMALIZATION_EXECUTED',
+        targetResource: 'Score',
+        resourceId: req.user._id,
+        payload: {
+          totalProcessed: result.total_scores_processed ?? scores.length,
+          totalSubmissions: result.total_submissions ?? formattedStandings.length,
+          eventId: eventId.toString(),
+        },
+        ipHash,
+      });
+    }
 
+    // 4. Returns computed standings to caller
     return res.status(200).json({
       success: true,
-      message: 'Score normalization successfully computed by microservice.',
-      data: result,
+      message: 'Score normalization successfully computed.',
+      standings: formattedStandings,
+      data: {
+        ...result,
+        eventId: eventId.toString(),
+        standings: formattedStandings,
+        judge_calibrations: formattedCalibrations,
+        judgeCalibrations: formattedCalibrations,
+        total_scores_processed: result.total_scores_processed ?? scores.length,
+        total_submissions: result.total_submissions ?? formattedStandings.length,
+      },
     });
   } catch (error) {
     next(error);
   }
 };
+
+exports.normalizeScores = exports.runNormalization;
 
 exports.getLeaderboard = async (req, res, next) => {
   try {

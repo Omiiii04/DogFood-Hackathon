@@ -69,10 +69,20 @@ const extractRawScore = (doc) => {
  * Transform Mongoose Score records into NormalizationRequest payload
  */
 const transformScoresToPayload = (eventId, scores, bayesianPriorK = 3.0) => {
+  let actualEventId = eventId;
+  let actualScores = scores;
+  let actualPriorK = bayesianPriorK;
+
+  if (Array.isArray(eventId)) {
+    actualScores = eventId;
+    actualEventId = (typeof scores === 'string' || (scores && scores._id)) ? scores : 'default-event';
+    actualPriorK = typeof scores === 'number' ? scores : 3.0;
+  }
+
   const transformedScores = [];
 
-  if (Array.isArray(scores)) {
-    for (const item of scores) {
+  if (Array.isArray(actualScores)) {
+    for (const item of actualScores) {
       if (!item) continue;
       const doc = typeof item.toObject === 'function' ? item.toObject() : item;
       const judgeId = extractId(doc.judgeId || doc.judge || doc.judge_id);
@@ -90,9 +100,9 @@ const transformScoresToPayload = (eventId, scores, bayesianPriorK = 3.0) => {
   }
 
   return {
-    event_id: String(eventId || 'default-event'),
+    event_id: String(actualEventId || 'default-event'),
     scores: transformedScores,
-    bayesian_prior_k: Number(bayesianPriorK) || 3.0,
+    bayesian_prior_k: Number(actualPriorK) || 3.0,
   };
 };
 
@@ -100,7 +110,17 @@ const transformScoresToPayload = (eventId, scores, bayesianPriorK = 3.0) => {
  * Compute fallback raw weighted average standings if FastAPI service is unreachable
  */
 const computeFallbackStandings = (eventId, scores, bayesianPriorK = 3.0) => {
-  const payload = transformScoresToPayload(eventId, scores, bayesianPriorK);
+  let actualEventId = eventId;
+  let actualScores = scores;
+  let actualPriorK = bayesianPriorK;
+
+  if (Array.isArray(eventId)) {
+    actualScores = eventId;
+    actualEventId = (typeof scores === 'string' || (scores && scores._id)) ? scores : 'default-event';
+    actualPriorK = typeof scores === 'number' ? scores : 3.0;
+  }
+
+  const payload = transformScoresToPayload(actualEventId, actualScores, actualPriorK);
   const transformedScores = payload.scores;
 
   if (transformedScores.length === 0) {
@@ -197,7 +217,17 @@ const computeFallbackStandings = (eventId, scores, bayesianPriorK = 3.0) => {
  * Call FastAPI scoring normalization microservice with graceful fallback
  */
 const normalizeScores = async (eventId, scores, bayesianPriorK = 3.0) => {
-  const payload = transformScoresToPayload(eventId, scores, bayesianPriorK);
+  let actualEventId = eventId;
+  let actualScores = scores;
+  let actualPriorK = bayesianPriorK;
+
+  if (Array.isArray(eventId)) {
+    actualScores = eventId;
+    actualEventId = (typeof scores === 'string' || (scores && scores._id)) ? scores : 'default-event';
+    actualPriorK = typeof scores === 'number' ? scores : 3.0;
+  }
+
+  const payload = transformScoresToPayload(actualEventId, actualScores, actualPriorK);
 
   if (payload.scores.length === 0) {
     return {
@@ -231,7 +261,7 @@ const normalizeScores = async (eventId, scores, bayesianPriorK = 3.0) => {
     console.error(
       `[CRITICAL] FastAPI judging-service unreachable at ${fastApiClient.defaults.baseURL || FASTAPI_URL}${NORMALIZE_ENDPOINT}: ${error.message}. Computing fallback raw weighted average.`
     );
-    return computeFallbackStandings(eventId, scores, bayesianPriorK);
+    return computeFallbackStandings(actualEventId, actualScores, actualPriorK);
   }
 };
 
