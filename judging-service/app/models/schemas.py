@@ -34,6 +34,24 @@ class NormalizationResponse(BaseModel):
     judge_calibrations: List[JudgeCalibrationMetric]
     standings: List[ProjectStanding]
 
+class JudgeDiagnosticsRequest(BaseModel):
+    scores: List[JudgeScoreEntry]
+    bayesian_prior_k: float = Field(default=3.0, ge=0.0)
+
+class JudgeCalibrationDiagnosticResponse(BaseModel):
+    judge_id: str
+    sample_size: int
+    raw_mean: float
+    raw_std: Optional[float]
+    global_mean: float
+    global_std: Optional[float]
+    bayesian_shrunk_mean: float
+    severity: str
+    standard_error: Optional[float]
+
+class JudgeDiagnosticsResponse(BaseModel):
+    diagnostics: List[JudgeCalibrationDiagnosticResponse]
+
 class PairwiseComparison(BaseModel):
     submission_a: str
     submission_b: str
