@@ -333,7 +333,7 @@ exports.finalizeSubmission = async (req, res, next) => {
 
 exports.getPublicSubmissions = async (req, res, next) => {
   try {
-    const { track, search, q } = req.query;
+    const { track, search, q, sort } = req.query;
     const filter = { status: { $in: ['submitted', 'locked'] } };
 
     if (track && track !== 'All') {
@@ -345,10 +345,19 @@ exports.getPublicSubmissions = async (req, res, next) => {
       filter.$text = { $search: searchTerm };
     }
 
+    let sortObj = { createdAt: -1 };
+    if (sort === 'upvotes') {
+      sortObj = { publicVoteCount: -1, createdAt: -1 };
+    } else if (sort === 'newest') {
+      sortObj = { createdAt: -1 };
+    } else {
+      sortObj = { publicVoteCount: -1, createdAt: -1 };
+    }
+
     const submissions = await Submission.find(filter)
       .populate('team', 'name track members')
       .populate('teamId', 'name track members')
-      .sort({ publicVoteCount: -1, createdAt: -1 });
+      .sort(sortObj);
 
     return res.status(200).json({
       success: true,

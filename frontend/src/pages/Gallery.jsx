@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useSubmissions } from '../hooks/useSubmissions';
 import { ProjectCard } from '../components/ProjectCard';
 import { Modal } from '../components/Modal';
+import { UpvoteWidget } from '../components/UpvoteWidget';
 import { renderMarkdownToSafeHTML } from '../utils/markdownSanitizer';
 import { Search, Filter, Github, ExternalLink, Sparkles } from 'lucide-react';
 import { getTrackBadgeColor } from '../utils/formatters';
@@ -13,8 +14,9 @@ export const Gallery = () => {
   const [selectedTrack, setSelectedTrack] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProject, setSelectedProject] = useState(null);
+  const [sortBy, setSortBy] = useState('upvotes');
 
-  const { submissions, loading, error } = useSubmissions(selectedTrack, searchQuery);
+  const { submissions, loading, error } = useSubmissions(selectedTrack, searchQuery, sortBy);
 
   return (
     <div className="space-y-8 py-6">
@@ -42,21 +44,35 @@ export const Gallery = () => {
         </div>
       </div>
 
-      <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
-        <Filter className="w-4 h-4 text-gray-400 shrink-0 mr-1" />
-        {TRACKS.map((track) => (
-          <button
-            key={track}
-            onClick={() => setSelectedTrack(track)}
-            className={`px-4 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-              selectedTrack === track
-                ? 'bg-blue-600 text-white shadow-glow'
-                : 'bg-surface border border-border-subtle text-gray-300 hover:text-white hover:bg-surface-raised'
-            }`}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+        <div className="flex items-center space-x-2 overflow-x-auto scrollbar-none">
+          <Filter className="w-4 h-4 text-gray-400 shrink-0 mr-1" />
+          {TRACKS.map((track) => (
+            <button
+              key={track}
+              onClick={() => setSelectedTrack(track)}
+              className={`px-4 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                selectedTrack === track
+                  ? 'bg-blue-600 text-white shadow-glow'
+                  : 'bg-surface border border-border-subtle text-gray-300 hover:text-white hover:bg-surface-raised'
+              }`}
+            >
+              {track}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center space-x-2 shrink-0">
+          <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Sort:</span>
+          <select 
+            value={sortBy} 
+            onChange={e => setSortBy(e.target.value)}
+            className="bg-surface border border-border-subtle text-white text-xs font-semibold rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
           >
-            {track}
-          </button>
-        ))}
+            <option value="upvotes">🔥 Community Upvotes</option>
+            <option value="newest">✨ Newest First</option>
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -150,6 +166,9 @@ export const Gallery = () => {
                   <span>Live Demo</span>
                 </a>
               )}
+              <div className="ml-auto">
+                <UpvoteWidget submission={selectedProject} size="lg" />
+              </div>
             </div>
 
             <div className="border-t border-border-subtle pt-6">
