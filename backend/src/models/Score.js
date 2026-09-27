@@ -60,6 +60,10 @@ const ScoreSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    zScore: {
+      type: Number,
+      default: null,
+    },
     isFinal: {
       type: Boolean,
       default: true,

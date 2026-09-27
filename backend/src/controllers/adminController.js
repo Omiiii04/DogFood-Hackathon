@@ -134,7 +134,10 @@ exports.runNormalization = async (req, res, next) => {
       for (const standing of result.standings) {
         await Score.updateMany(
           { submissionId: standing.submission_id },
-          { normalizedScore: standing.normalized_score }
+          { 
+            normalizedScore: standing.normalized_score,
+            zScore: standing.z_mean
+          }
         );
       }
     }
@@ -192,6 +195,11 @@ exports.getLeaderboard = async (req, res, next) => {
           ? subScores[0].normalizedScore
           : null;
 
+      const zScore =
+        ballotCount > 0 && subScores[0].zScore != null
+          ? subScores[0].zScore
+          : null;
+
       return {
         id: sub._id,
         title: sub.title,
@@ -205,6 +213,7 @@ exports.getLeaderboard = async (req, res, next) => {
         ballotCount,
         rawMean: Number(rawMean.toFixed(2)),
         normalizedScore: normalizedScore != null ? Number(normalizedScore.toFixed(2)) : null,
+        zScore: zScore != null ? Number(zScore.toFixed(4)) : null,
       };
     });
 
