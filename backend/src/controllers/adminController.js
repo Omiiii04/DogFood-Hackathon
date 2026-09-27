@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Team = require('../models/Team');
 const Submission = require('../models/Submission');
@@ -11,7 +12,11 @@ const crypto = require('crypto');
 const { solveJudgeAssignments } = require('../services/assignmentSolver');
 const fastApiClient = require('../services/fastApiClient');
 const { normalizeScores } = fastApiClient;
-const { generateStandingsCSV } = require('../services/csvExporter');
+const {
+  generateStandingsCSV,
+  createStandingsCSVStream,
+  formatStandingRow,
+} = require('../services/csvExporter');
 
 exports.assignJudges = async (req, res, next) => {
   try {
@@ -332,51 +337,267 @@ exports.getLeaderboard = async (req, res, next) => {
   }
 };
 
+/**
+ * Helper to build comprehensive standings and score export data for CSV / JSON archiving.
+ */
+const buildExportStandingsData = async (eventId) => {
+  const submissionFilter = { status: { $in: ['submitted', 'locked'] } };
+  if (eventId && eventId !== 'all') {
+    submissionFilter.$or = [{ event: eventId }, { eventId: eventId }];
+  }
+
+  // Populate team with nested members and captain
+  let subQuery = Submission.find(submissionFilter);
+  if (typeof subQuery.populate === 'function') {
+    subQuery = subQuery.populate({
+      path: 'team',
+      populate: [
+        { path: 'members', select: 'name fullName email role' },
+        { path: 'captain', select: 'name fullName email role' },
+      ],
+    });
+  }
+  if (typeof subQuery.lean === 'function') {
+    subQuery = subQuery.lean();
+  }
+  const submissions = (await subQuery) || [];
+
+  // Identify any missing / unpopulated teams
+  const missingTeamIds = [];
+  submissions.forEach((sub) => {
+    const t = sub.team || sub.teamId;
+    if (t && (typeof t === 'string' || (mongoose.isValidObjectId(t) && !t.name))) {
+      missingTeamIds.push(t.toString());
+    }
+  });
+
+  const teamsMap = new Map();
+  if (missingTeamIds.length > 0) {
+    const fetchedTeams = await Team.find({ _id: { $in: missingTeamIds } })
+      .populate('members captain', 'name fullName email role')
+      .lean();
+    fetchedTeams.forEach((t) => teamsMap.set(t._id.toString(), t));
+  }
+
+  // Query completed scores
+  let scoreQuery = Score.find({ isFinal: { $ne: false } });
+  if (typeof scoreQuery.populate === 'function') {
+    scoreQuery = scoreQuery.populate('judge', 'name fullName email role');
+  }
+  if (typeof scoreQuery.lean === 'function') {
+    scoreQuery = scoreQuery.lean();
+  }
+  const scores = (await scoreQuery) || [];
+
+  const scoresBySub = new Map();
+  scores.forEach((s) => {
+    const subId = (s.submission || s.submissionId || s.submission_id)?.toString();
+    if (subId) {
+      if (!scoresBySub.has(subId)) scoresBySub.set(subId, []);
+      scoresBySub.get(subId).push(s);
+    }
+  });
+
+  // Query latest LeaderboardCache if available
+  let latestCache = null;
+  try {
+    if (LeaderboardCache && typeof LeaderboardCache.getLatest === 'function') {
+      latestCache = await LeaderboardCache.getLatest(eventId);
+      if (latestCache && typeof latestCache.toObject === 'function') {
+        latestCache = latestCache.toObject();
+      }
+    } else if (LeaderboardCache) {
+      const q = eventId && eventId !== 'all' ? { eventId: eventId.toString() } : {};
+      latestCache = await LeaderboardCache.findOne(q).sort({ updatedAt: -1 }).lean();
+    }
+  } catch (_) { }
+
+  const cacheMap = new Map();
+  if (latestCache && Array.isArray(latestCache.standings)) {
+    latestCache.standings.forEach((cs) => {
+      const id = (cs.submissionId || cs.submission_id || cs.id)?._id?.toString() ||
+                 (cs.submissionId || cs.submission_id || cs.id)?.toString();
+      if (id) cacheMap.set(id, cs);
+    });
+  }
+
+  const standings = submissions.map((sub) => {
+    const subId = sub._id.toString();
+    const teamDoc = (sub.team && typeof sub.team === 'object' && sub.team.name)
+      ? sub.team
+      : (sub.teamId && typeof sub.teamId === 'object' && sub.teamId.name)
+        ? sub.teamId
+        : teamsMap.get((sub.team || sub.teamId)?.toString());
+
+    // Extract team members
+    const membersList = [];
+    const seenMemberIds = new Set();
+
+    const addMember = (m) => {
+      if (!m) return;
+      const mId = m._id ? m._id.toString() : (typeof m === 'string' ? m : null);
+      const name = m.name || m.fullName || (m.email ? m.email.split('@')[0] : (typeof m === 'string' ? m : ''));
+      if (name && (!mId || !seenMemberIds.has(mId))) {
+        if (mId) seenMemberIds.add(mId);
+        membersList.push({
+          id: mId,
+          name,
+          email: m.email || '',
+        });
+      }
+    };
+
+    if (teamDoc) {
+      if (teamDoc.captain) addMember(teamDoc.captain);
+      if (Array.isArray(teamDoc.members)) teamDoc.members.forEach(addMember);
+    }
+
+    const subScores = scoresBySub.get(subId) || [];
+    const cached = cacheMap.get(subId);
+
+    const ballotCount = cached?.ballotCount ?? cached?.ballot_count ?? subScores.length;
+
+    // Raw Average
+    let rawAverage = null;
+    if (cached?.rawMean != null) {
+      rawAverage = cached.rawMean;
+    } else if (cached?.raw_mean != null) {
+      rawAverage = cached.raw_mean;
+    } else if (subScores.length > 0) {
+      const totalRaw = subScores.reduce((acc, s) => {
+        const val = s.rawCompositeScore ?? s.totalRawScore ?? s.raw_composite_score ?? 0;
+        return acc + val;
+      }, 0);
+      rawAverage = Number((totalRaw / subScores.length).toFixed(2));
+    }
+
+    // Normalized Score
+    let normalizedScore = cached?.normalizedScore ?? cached?.normalized_score ?? null;
+    if (normalizedScore == null && subScores.length > 0) {
+      const sWithNorm = subScores.find((s) => s.normalizedScore != null);
+      if (sWithNorm) normalizedScore = sWithNorm.normalizedScore;
+    }
+    if (normalizedScore != null) normalizedScore = Number(Number(normalizedScore).toFixed(2));
+
+    // Z-Score Mean
+    let zScoreMean = cached?.zScoreMean ?? cached?.z_score_mean ?? cached?.zScore ?? cached?.z_mean ?? null;
+    if (zScoreMean == null && subScores.length > 0) {
+      const sWithZ = subScores.find((s) => s.zScore != null);
+      if (sWithZ) zScoreMean = sWithZ.zScore;
+    }
+    if (zScoreMean != null) zScoreMean = Number(Number(zScoreMean).toFixed(4));
+
+    // Judge Comments & Ballots
+    const judgeCommentsList = [];
+    const ballots = [];
+
+    for (const s of subScores) {
+      const judgeObj = s.judge || s.judgeId;
+      const judgeName = judgeObj?.name || judgeObj?.fullName || (judgeObj?.email ? judgeObj.email.split('@')[0] : 'Judge');
+      const judgeId = judgeObj?._id?.toString() || (typeof judgeObj === 'string' ? judgeObj : null);
+      const notes = (s.privateNotes || s.comments || s.notes || s.feedback || '').trim();
+
+      if (notes) {
+        judgeCommentsList.push(`${judgeName}: ${notes}`);
+      }
+
+      ballots.push({
+        ballotId: s._id?.toString(),
+        judgeId,
+        judgeName,
+        totalRawScore: s.rawCompositeScore ?? s.totalRawScore ?? null,
+        normalizedScore: s.normalizedScore ?? null,
+        zScore: s.zScore ?? null,
+        criteriaScores: s.criteriaScores || [],
+        privateNotes: notes,
+      });
+    }
+
+    return {
+      id: sub._id,
+      submissionId: sub._id,
+      title: sub.title,
+      projectTitle: sub.title,
+      track: sub.track,
+      tagline: sub.tagline,
+      description: sub.description,
+      team: {
+        id: teamDoc?._id || null,
+        name: teamDoc?.name || sub.teamName || 'Unknown Team',
+        captain: teamDoc?.captain?.name || teamDoc?.captain?.fullName || null,
+        members: membersList,
+      },
+      teamName: teamDoc?.name || sub.teamName || 'Unknown Team',
+      teamMembers: membersList.map((m) => m.name).join(', '),
+      teamMembersList: membersList,
+      rawAverage,
+      rawMean: rawAverage,
+      normalizedScore,
+      zScoreMean,
+      zScore: zScoreMean,
+      ballotCount,
+      publicVoteCount: sub.publicVoteCount || 0,
+      judgeComments: judgeCommentsList.join('\n---\n'),
+      judgeCommentsList,
+      ballots,
+      repoUrl: sub.repoUrl || sub.githubUrl || '',
+      demoUrl: sub.demoUrl || sub.demoVideoUrl || '',
+      thumbnailPath: sub.thumbnailPath || sub.thumbnailUrl || '',
+      submittedAt: sub.submittedAt || sub.createdAt || null,
+      cachedRank: cached?.rank ?? null,
+    };
+  });
+
+  // Sort standings: preserve cache rank if present on all items, else normalized score -> raw average -> title
+  const allCached = standings.length > 0 && standings.every((s) => s.cachedRank != null);
+  if (allCached) {
+    standings.sort((a, b) => a.cachedRank - b.cachedRank);
+  } else {
+    standings.sort((a, b) => {
+      if (a.normalizedScore != null && b.normalizedScore != null) {
+        return b.normalizedScore - a.normalizedScore;
+      }
+      if (a.normalizedScore != null) return -1;
+      if (b.normalizedScore != null) return 1;
+      if (a.rawAverage != null && b.rawAverage != null) {
+        return b.rawAverage - a.rawAverage;
+      }
+      if (a.rawAverage != null) return -1;
+      if (b.rawAverage != null) return 1;
+      return (a.title || '').localeCompare(b.title || '');
+    });
+  }
+
+  // Assign ranks
+  standings.forEach((s, idx) => {
+    s.rank = idx + 1;
+  });
+
+  return {
+    standings,
+    latestCache,
+    scoresCount: scores.length,
+    eventId: eventId || 'default-event',
+  };
+};
+
+exports.buildExportStandingsData = buildExportStandingsData;
+
 exports.exportCSV = async (req, res, next) => {
   try {
-    const submissions = await Submission.find({ status: { $in: ['submitted', 'locked'] } })
-      .populate('teamId', 'name')
-      .lean();
+    const eventId = req.query?.eventId || req.params?.eventId || 'default-event';
+    const { standings } = await buildExportStandingsData(eventId);
 
-    const scores = await Score.find().lean();
-    const scoresBySub = {};
-    scores.forEach((s) => {
-      const subId = s.submissionId.toString();
-      if (!scoresBySub[subId]) scoresBySub[subId] = [];
-      scoresBySub[subId].push(s);
-    });
-
-    const standings = submissions.map((sub) => {
-      const subScores = scoresBySub[sub._id.toString()] || [];
-      const ballotCount = subScores.length;
-      const rawMean =
-        ballotCount > 0
-          ? subScores.reduce((sum, s) => sum + s.totalRawScore, 0) / ballotCount
-          : 0;
-      const normalizedScore =
-        ballotCount > 0 ? subScores[0].normalizedScore : null;
-
-      return {
-        id: sub._id,
-        title: sub.title,
-        teamName: sub.teamId?.name || 'Unknown Team',
-        track: sub.track,
-        repoUrl: sub.repoUrl,
-        ballotCount,
-        rawMean,
-        normalizedScore,
-        publicVoteCount: sub.publicVoteCount || 0,
-      };
-    });
-
-    standings.sort((a, b) => (b.normalizedScore || b.rawMean) - (a.normalizedScore || a.rawMean));
-    standings.forEach((s, idx) => (s.rank = idx + 1));
-
-    const csvContent = generateStandingsCSV(standings);
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="dogfood-2026-standings.csv"');
-    return res.status(200).send(csvContent);
+
+    const csvStream = createStandingsCSVStream(standings);
+    csvStream.on('error', (err) => {
+      if (!res.headersSent) {
+        next(err);
+      }
+    });
+    csvStream.pipe(res);
   } catch (error) {
     next(error);
   }
@@ -384,47 +605,64 @@ exports.exportCSV = async (req, res, next) => {
 
 exports.exportJSON = async (req, res, next) => {
   try {
-    const submissions = await Submission.find({ status: { $in: ['submitted', 'locked'] } })
-      .populate('teamId', 'name')
-      .lean();
+    const eventId = req.query?.eventId || req.params?.eventId || 'default-event';
+    const { standings, latestCache, scoresCount } = await buildExportStandingsData(eventId);
 
-    const scores = await Score.find().lean();
-    const scoresBySub = {};
-    scores.forEach((s) => {
-      const subId = s.submissionId.toString();
-      if (!scoresBySub[subId]) scoresBySub[subId] = [];
-      scoresBySub[subId].push(s);
-    });
+    const archiveData = {
+      metadata: {
+        title: 'DogFood Hackathon 2026 - Standings & Judging Archive',
+        version: '2026.1',
+        exportedAt: new Date().toISOString(),
+        eventId: eventId.toString(),
+        totalSubmissions: standings.length,
+        totalScoresProcessed: scoresCount,
+        algorithm: latestCache?.algorithm || 'z_score_bayesian_shrinkage',
+        isFallback: latestCache?.isFallback || false,
+      },
+      summary: {
+        totalSubmissions: standings.length,
+        evaluatedSubmissions: standings.filter((s) => s.ballotCount > 0).length,
+        tracks: [...new Set(standings.map((s) => s.track).filter(Boolean))],
+        averageRawScore:
+          standings.filter((s) => s.rawAverage != null).length > 0
+            ? Number(
+                (
+                  standings.reduce((sum, s) => sum + (s.rawAverage || 0), 0) /
+                  (standings.filter((s) => s.rawAverage != null).length || 1)
+                ).toFixed(2)
+              )
+            : null,
+      },
+      standings: standings.map((item) => ({
+        rank: item.rank,
+        submissionId: item.submissionId,
+        projectTitle: item.title,
+        track: item.track,
+        tagline: item.tagline,
+        description: item.description,
+        team: item.team,
+        scores: {
+          rawAverage: item.rawAverage,
+          normalizedScore: item.normalizedScore,
+          zScoreMean: item.zScoreMean,
+          ballotCount: item.ballotCount,
+          publicVotes: item.publicVoteCount,
+        },
+        judgeComments: item.judgeCommentsList,
+        ballots: item.ballots,
+        links: {
+          repoUrl: item.repoUrl,
+          demoUrl: item.demoUrl,
+          thumbnailPath: item.thumbnailPath,
+        },
+        submittedAt: item.submittedAt,
+      })),
+      judgeCalibrations: latestCache?.judgeCalibrations || [],
+    };
 
-    const standings = submissions.map((sub) => {
-      const subScores = scoresBySub[sub._id.toString()] || [];
-      const ballotCount = subScores.length;
-      const rawMean =
-        ballotCount > 0
-          ? subScores.reduce((sum, s) => sum + s.totalRawScore, 0) / ballotCount
-          : 0;
-      const normalizedScore =
-        ballotCount > 0 ? subScores[0].normalizedScore : null;
-
-      return {
-        id: sub._id,
-        title: sub.title,
-        teamName: sub.teamId?.name || 'Unknown Team',
-        track: sub.track,
-        repoUrl: sub.repoUrl,
-        ballotCount,
-        rawMean,
-        normalizedScore,
-        publicVoteCount: sub.publicVoteCount || 0,
-      };
-    });
-
-    standings.sort((a, b) => (b.normalizedScore || b.rawMean) - (a.normalizedScore || a.rawMean));
-    standings.forEach((s, idx) => (s.rank = idx + 1));
-
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="dogfood-2026-standings.json"');
-    return res.status(200).send(JSON.stringify(standings, null, 2));
+    return res.status(200).send(JSON.stringify(archiveData, null, 2));
   } catch (error) {
     next(error);
   }
