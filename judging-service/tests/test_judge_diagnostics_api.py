@@ -132,6 +132,7 @@ def test_judge_diagnostics_does_not_expose_unrelated_routes():
         "/health",
         "/api/v1/normalize",
         "/api/v1/judge-diagnostics",
+        "/api/v1/voting-anomalies",
     }
 
 

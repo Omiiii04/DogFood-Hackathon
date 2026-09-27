@@ -1,5 +1,7 @@
-from pydantic import BaseModel, Field
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
+
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 class JudgeScoreEntry(BaseModel):
     judge_id: str = Field(..., description="Unique judge identifier")
@@ -85,3 +87,73 @@ class AnomalyDetectionResponse(BaseModel):
     peak_velocity: int
     entropy: float
     message: str
+
+
+class VoteRecord(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    submission_id: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("submission_id", "submissionId", "submission"),
+    )
+    timestamp: float = Field(
+        ...,
+        validation_alias=AliasChoices("timestamp", "votedAt", "createdAt"),
+    )
+    user_agent: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("user_agent", "userAgent"),
+    )
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def parse_timestamp(cls, value: Any) -> float:
+        if isinstance(value, datetime):
+            parsed = value
+        elif isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        else:
+            return value
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+
+    @field_validator("timestamp")
+    @classmethod
+    def require_finite_timestamp(cls, value: float) -> float:
+        import math
+
+        if not math.isfinite(value):
+            raise ValueError("timestamp must be finite")
+        return value
+
+
+class VotingAnomalyRequest(BaseModel):
+    votes: List[VoteRecord]
+    submission_ids: List[str] = Field(default_factory=list, min_length=0)
+
+
+class FlaggedSubmission(BaseModel):
+    submission_id: str
+    risk_score: float = Field(..., ge=0.0, le=1.0)
+    reasons: List[str] = Field(..., min_length=1)
+    vote_count: int = Field(..., ge=0)
+    velocity: float = Field(..., ge=0.0)
+    velocity_z_score: float
+    entropy: float = Field(..., ge=0.0)
+    normalized_entropy: float = Field(..., ge=0.0, le=1.0)
+
+
+class VotingAnomalyResponse(BaseModel):
+    status: str
+    total_votes: int = Field(..., ge=0)
+    total_submissions: int = Field(..., ge=0)
+    observation_window_seconds: float = Field(..., gt=0.0)
+    tournament_mean_velocity: float = Field(..., ge=0.0)
+    tournament_velocity_std: float = Field(..., ge=0.0)
+    flagged_submissions: List[FlaggedSubmission]
