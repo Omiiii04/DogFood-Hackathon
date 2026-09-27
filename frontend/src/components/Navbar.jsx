@@ -97,6 +97,7 @@ export const Navbar = () => {
               <button
                 id="navbar-logout-btn"
                 onClick={logout}
+                aria-label="Log out"
                 title="Log out"
                 className="p-2 rounded-lg bg-surface-raised border border-border-subtle text-gray-400 hover:text-rose-400 hover:border-rose-800 transition-colors"
               >
