@@ -26,6 +26,13 @@ router.post(
   judgingController.submitScore
 );
 
+// Draft auto-save (in-progress evaluations)
+router.put(
+  '/scores/draft',
+  roleGuard('judge', 'organizer', 'admin'),
+  judgingController.saveDraftScore
+);
+
 // Inspect score (returns only authenticated judge's own ballot; strips all competitor scores)
 router.get(
   '/scores/:submissionId',

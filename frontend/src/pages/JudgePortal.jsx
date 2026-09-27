@@ -24,10 +24,12 @@ export const JudgePortal = () => {
 
   useEffect(() => {
     if (selectedItem) {
-      if (selectedItem.score) {
+      if (selectedItem.score && selectedItem.score.criteriaScores?.length > 0) {
         const scoresMap = {};
         selectedItem.score.criteriaScores.forEach((cs) => {
-          scoresMap[cs.criteriaName] = cs.rawScore;
+          const key = cs.criteriaName || cs.key;
+          const val = cs.rawScore !== undefined ? cs.rawScore : cs.score;
+          if (key && val !== undefined) scoresMap[key] = val;
         });
         setCriteriaScores(scoresMap);
         setPrivateNotes(selectedItem.score.privateNotes || '');
@@ -38,7 +40,7 @@ export const JudgePortal = () => {
         });
         setCriteriaScores(initialMap);
         const draftedNotes = localStorage.getItem(`draft_notes_${selectedItem.submission?._id}`);
-        setPrivateNotes(draftedNotes || '');
+        setPrivateNotes(selectedItem.score?.privateNotes || draftedNotes || '');
       }
     }
   }, [selectedItem, rubric]);
@@ -50,14 +52,32 @@ export const JudgePortal = () => {
   }, [queue, selectedItem]);
 
   useEffect(() => {
-    if (!selectedItem?.submission?._id || selectedItem?.score) return;
-    const timer = setTimeout(() => {
-      localStorage.setItem(`draft_notes_${selectedItem.submission._id}`, privateNotes);
-      setSaveStatus('Draft saved');
-      setTimeout(() => setSaveStatus(''), 2000);
+    if (!selectedItem?.submission?._id || selectedItem?.status === 'completed' || selectedItem?.score?.isFinal) return;
+    const timer = setTimeout(async () => {
+      try {
+        setSaveStatus('Saving draft...');
+        const scoresPayload = rubric.map((crit) => ({
+          criteriaName: crit.name,
+          key: crit.key || crit.name,
+          weight: crit.weight,
+          rawScore: criteriaScores[crit.name] !== undefined ? criteriaScores[crit.name] : 5.0,
+          score: criteriaScores[crit.name] !== undefined ? criteriaScores[crit.name] : 5.0,
+        }));
+        await api.put('/judging/scores/draft', {
+          submissionId: selectedItem.submission._id,
+          criteriaScores: scoresPayload,
+          privateNotes,
+        });
+        setSaveStatus('Draft saved');
+        setTimeout(() => setSaveStatus(''), 2000);
+      } catch (err) {
+        localStorage.setItem(`draft_notes_${selectedItem.submission._id}`, privateNotes);
+        setSaveStatus('Draft saved locally');
+        setTimeout(() => setSaveStatus(''), 2000);
+      }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [privateNotes, selectedItem]);
+  }, [privateNotes, criteriaScores, selectedItem, rubric]);
 
   const handleSliderChange = (name, val) => {
     setCriteriaScores((prev) => ({ ...prev, [name]: val }));
@@ -200,13 +220,22 @@ export const JudgePortal = () => {
                     </span>
                     <span
                       className={`flex items-center space-x-1 text-xs font-mono font-semibold ${
-                        isDone ? 'text-emerald-400' : 'text-amber-400'
+                        isDone
+                          ? 'text-emerald-400'
+                          : item.status === 'in_progress'
+                          ? 'text-cyan-400'
+                          : 'text-amber-400'
                       }`}
                     >
                       {isDone ? (
                         <>
                           <CheckCircle className="w-3.5 h-3.5" />
                           <span>Scored</span>
+                        </>
+                      ) : item.status === 'in_progress' ? (
+                        <>
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>In Progress</span>
                         </>
                       ) : (
                         <>

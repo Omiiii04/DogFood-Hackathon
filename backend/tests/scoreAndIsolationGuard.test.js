@@ -6,6 +6,7 @@ const JudgeAssignment = require('../src/models/JudgeAssignment');
 const User = require('../src/models/User');
 const Event = require('../src/models/Event');
 const Rubric = require('../src/models/Rubric');
+const AuditLog = require('../src/models/AuditLog');
 const app = require('../src/index');
 const isolationGuard = require('../src/middleware/isolationGuard');
 
@@ -537,6 +538,321 @@ describe('Score Model & isolationGuard Middleware Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.score).toBeDefined();
+    });
+
+    describe('POST /api/v1/judging/scores - Score Recording Endpoint', () => {
+      it('should reject score recording if criterion score is below 1.0', async () => {
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: dummySubmissionId,
+          status: 'assigned',
+        });
+
+        const res = await request(app)
+          .post('/api/v1/judging/scores')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            criteriaScores: [{ key: 'execution', score: 0.5 }],
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/between 1.0 and 10.0 with step 0.5/);
+      });
+
+      it('should reject score recording if criterion score is above 10.0', async () => {
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: dummySubmissionId,
+          status: 'assigned',
+        });
+
+        const res = await request(app)
+          .post('/api/v1/judging/scores')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            criteriaScores: [{ key: 'execution', score: 10.5 }],
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/between 1.0 and 10.0 with step 0.5/);
+      });
+
+      it('should reject score recording if criterion score does not satisfy step 0.5', async () => {
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: dummySubmissionId,
+          status: 'assigned',
+        });
+
+        const res = await request(app)
+          .post('/api/v1/judging/scores')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            criteriaScores: [{ key: 'execution', score: 8.2 }],
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/between 1.0 and 10.0 with step 0.5/);
+      });
+
+      it('should compute rawCompositeScore = sum(w_c * score_c), upsert Score, and update JudgeAssignment.status = completed', async () => {
+        const mockAssignment = {
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: dummySubmissionId,
+          status: 'assigned',
+        };
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue(mockAssignment);
+        jest.spyOn(JudgeAssignment, 'findOneAndUpdate').mockResolvedValue({
+          ...mockAssignment,
+          status: 'completed',
+        });
+
+        const savedScoreDoc = {
+          _id: new mongoose.Types.ObjectId(),
+          judge: dummyJudgeId,
+          submission: dummySubmissionId,
+          criteriaScores: [
+            { key: 'tech_execution', score: 8.5, weight: 0.6 },
+            { key: 'innovation', score: 9.0, weight: 0.4 },
+          ],
+          rawCompositeScore: 8.7,
+          totalRawScore: 8.7,
+          isFinal: true,
+          privateNotes: 'Exceptional submission.',
+        };
+        jest.spyOn(Score, 'findOneAndUpdate').mockResolvedValue(savedScoreDoc);
+        jest.spyOn(AuditLog, 'create').mockResolvedValue(true);
+
+        const res = await request(app)
+          .post('/api/v1/judging/scores')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            criteriaScores: [
+              { key: 'tech_execution', score: 8.5, weight: 0.6 },
+              { key: 'innovation', score: 9.0, weight: 0.4 },
+            ],
+            privateNotes: 'Exceptional submission.',
+          });
+
+        expect(res.status).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.score).toBeDefined();
+
+        // Verify rawCompositeScore computation: 8.5 * 0.6 + 9.0 * 0.4 = 5.1 + 3.6 = 8.7
+        expect(Score.findOneAndUpdate).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            rawCompositeScore: 8.7,
+            totalRawScore: 8.7,
+            isFinal: true,
+            privateNotes: 'Exceptional submission.',
+          }),
+          expect.anything()
+        );
+
+        // Verify JudgeAssignment status updated to completed
+        expect(JudgeAssignment.findOneAndUpdate).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ status: 'completed' }),
+          expect.anything()
+        );
+
+        // Verify AuditLog was recorded
+        expect(AuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: 'SCORE_SUBMITTED',
+            actorRole: 'judge',
+            payload: expect.objectContaining({
+              submissionId: dummySubmissionId.toString(),
+              rawCompositeScore: 8.7,
+            }),
+          })
+        );
+      });
+    });
+
+    describe('PUT /api/v1/judging/scores/draft - Draft Auto-Save Endpoint', () => {
+      it('should enforce isolation guard check and return 403 when judge is unassigned', async () => {
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue(null);
+
+        const res = await request(app)
+          .put('/api/v1/judging/scores/draft')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            privateNotes: 'In progress draft...',
+          });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toBe('Access Denied: You are not assigned to evaluate this project');
+      });
+
+      it('should return 400 when submissionId is missing', async () => {
+        const res = await request(app)
+          .put('/api/v1/judging/scores/draft')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            privateNotes: 'Draft without submissionId',
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toBe('submissionId is required.');
+      });
+
+      it('should reject draft update if evaluation is already completed', async () => {
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: dummySubmissionId,
+          status: 'completed',
+        });
+
+        const res = await request(app)
+          .put('/api/v1/judging/scores/draft')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            privateNotes: 'Attempting to overwrite completed score',
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/Cannot update draft for an evaluation ballot that has already been submitted/);
+      });
+
+      it('should reject draft if provided criterion score violates step 0.5', async () => {
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: dummySubmissionId,
+          status: 'assigned',
+        });
+
+        const res = await request(app)
+          .put('/api/v1/judging/scores/draft')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            criteriaScores: [{ key: 'polish', score: 7.3 }],
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error).toMatch(/between 1.0 and 10.0 with step 0.5/);
+      });
+
+      it('should successfully auto-save draft with isFinal = false and update JudgeAssignment.status = in_progress', async () => {
+        const mockAssignment = {
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: dummySubmissionId,
+          status: 'assigned',
+        };
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue(mockAssignment);
+        jest.spyOn(JudgeAssignment, 'findOneAndUpdate').mockResolvedValue({
+          ...mockAssignment,
+          status: 'in_progress',
+        });
+
+        const draftScoreDoc = {
+          _id: new mongoose.Types.ObjectId(),
+          judge: dummyJudgeId,
+          submission: dummySubmissionId,
+          criteriaScores: [
+            { key: 'execution', score: 8.0, weight: 0.5 },
+            { key: 'impact', score: 9.0, weight: 0.5 },
+          ],
+          rawCompositeScore: 8.5,
+          totalRawScore: 8.5,
+          isFinal: false,
+          privateNotes: 'Draft review in progress...',
+        };
+        jest.spyOn(Score, 'findOneAndUpdate').mockResolvedValue(draftScoreDoc);
+
+        const res = await request(app)
+          .put('/api/v1/judging/scores/draft')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            criteriaScores: [
+              { key: 'execution', score: 8.0, weight: 0.5 },
+              { key: 'impact', score: 9.0, weight: 0.5 },
+            ],
+            privateNotes: 'Draft review in progress...',
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.score).toBeDefined();
+
+        // Verify Score saved with isFinal = false
+        expect(Score.findOneAndUpdate).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            isFinal: false,
+            rawCompositeScore: 8.5,
+            privateNotes: 'Draft review in progress...',
+          }),
+          expect.anything()
+        );
+
+        // Verify JudgeAssignment status updated to in_progress
+        expect(JudgeAssignment.findOneAndUpdate).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ status: 'in_progress' })
+        );
+      });
+
+      it('should allow auto-saving draft notes when criteriaScores is omitted', async () => {
+        jest.spyOn(JudgeAssignment, 'findOne').mockResolvedValue({
+          _id: new mongoose.Types.ObjectId(),
+          judgeId: dummyJudgeId,
+          submissionId: dummySubmissionId,
+          status: 'assigned',
+        });
+        jest.spyOn(Score, 'findOne').mockResolvedValue(null);
+        jest.spyOn(Score, 'findOneAndUpdate').mockResolvedValue({
+          _id: new mongoose.Types.ObjectId(),
+          judge: dummyJudgeId,
+          submission: dummySubmissionId,
+          rawCompositeScore: 0,
+          isFinal: false,
+          privateNotes: 'Only drafted some initial notes',
+        });
+        jest.spyOn(JudgeAssignment, 'findOneAndUpdate').mockResolvedValue({});
+
+        const res = await request(app)
+          .put('/api/v1/judging/scores/draft')
+          .set('Authorization', `Bearer ${judgeToken}`)
+          .send({
+            submissionId: dummySubmissionId.toString(),
+            privateNotes: 'Only drafted some initial notes',
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(Score.findOneAndUpdate).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            isFinal: false,
+            privateNotes: 'Only drafted some initial notes',
+          }),
+          expect.anything()
+        );
+      });
     });
   });
 });
