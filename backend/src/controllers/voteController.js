@@ -88,7 +88,6 @@ exports.castVote = async (req, res, next) => {
       throw err;
     }
 
-    // Atomically increment publicVoteCount
     submission.publicVoteCount = (submission.publicVoteCount || 0) + 1;
     await submission.save();
 

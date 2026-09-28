@@ -120,6 +120,24 @@ exports.assignJudges = async (req, res, next) => {
   }
 };
 
+exports.getAssignments = async (req, res, next) => {
+  try {
+    const assignments = await JudgeAssignment.find()
+      .populate('judgeId', 'fullName email')
+      .populate('submissionId', 'title track')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: { assignments },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 exports.runNormalization = async (req, res, next) => {
   try {
     if (req.user && req.user.role !== 'organizer' && req.user.role !== 'admin') {
