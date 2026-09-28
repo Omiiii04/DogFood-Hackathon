@@ -1,13 +1,23 @@
 # Dogfood 2026 — Self-Hosted Air-Gapped Hackathon Platform
 
 > **Hackathon Raptors 2026** — Engineered by Somnath, Falguni, and Om Apar.  
-> An offline-first, enterprise-grade hackathon management, submission, judging, and community platform featuring statistical score normalization (Z-score + Empirical Bayesian shrinkage), cryptographic isolation guards, and single-command deployment.
+> An offline-first hackathon management, submission, judging, and community platform featuring statistical score normalization (Z-score + Empirical Bayesian shrinkage), backend-enforced score isolation guards, and single-command deployment.
+
+---
+
+## 📚 Technical Documentation Deliverables
+
+Detailed technical specifications for the DogFood 2026 hackathon deliverables:
+
+- 🏛️ **[ARCHITECTURE.md](ARCHITECTURE.md)**: System topology, container orchestration, service boundaries, network routing, and offline asset architecture.
+- 🗄️ **[DATA-MODEL.md](DATA-MODEL.md)**: Comprehensive Mongoose database schemas, compound unique indexes, TTL policies, and entity relationship diagrams.
+- ⚖️ **[JUDGING.md](JUDGING.md)**: Judging subsystem specification, Min-Cost Max-Flow assignment engine, Bayesian Z-score normalization formulas, ballot isolation guards, and quickstart verification.
 
 ---
 
 ## ⚡ Single-Command Quickstart
 
-The entire platform runs in an isolated, air-gapped Docker network with a single command from the repository root:
+The entire platform runs in a dedicated Docker bridge network with a single command from the repository root:
 
 ```bash
 docker compose up --build
@@ -15,16 +25,19 @@ docker compose up --build
 
 ### 🌐 Service Port Matrix
 
-| Service | Protocol | Host URL | Description |
+| Service | Protocol | Port / Accessibility | Description |
 |---|---|---|---|
-| **Frontend Web Portal** | HTTP | [http://localhost:3000](http://localhost:3000) | React 18 SPA served via Nginx with offline vendored typography |
-| **Backend REST API** | HTTP | [http://localhost:5000/api/v1](http://localhost:5000/api/v1) | Node.js 20 & Express Core API with cryptographic role isolation |
-| **Judging Microservice** | HTTP | [http://localhost:8000](http://localhost:8000) | Python 3.11 & FastAPI statistical analytics service |
-| **MongoDB Database** | TCP | `mongodb://localhost:27017/dogfood` | MongoDB 7.0 database engine with automatic seed fixtures |
+| **Frontend Web Portal** | HTTP | [http://localhost:3000](http://localhost:3000) (Host: `3000:80`) | React 18 SPA served via Nginx with offline vendored typography |
+| **Backend REST API** | HTTP | [http://localhost:5000/api/v1](http://localhost:5000/api/v1) (Host: `5000:5000`) | Node.js 20 & Express Core API with role-based authorization |
+| **Judging Microservice** | HTTP | `http://judging-service:8000` (Internal Docker network only) | Python 3.11 & FastAPI statistical analytics service (no host port mapped) |
+| **MongoDB Database** | TCP | `mongodb://mongodb:27017/dogfood` (Internal Docker network only) | MongoDB 7.0 database engine with automatic seed fixtures (no host port mapped) |
+
+> [!NOTE]
+> In the Docker Compose topology, only the Frontend (port 3000) and Backend API (port 5000) publish host ports. The Judging Microservice (port 8000) and MongoDB (port 27017) are internal to `dogfood-net`. Host URLs `http://localhost:8000` and `mongodb://localhost:27017` apply only when running bare-metal on the host machine outside Docker.
 
 ### 🩺 Healthcheck Endpoints
-- **Core API Health:** [http://localhost:5000/api/v1/health](http://localhost:5000/api/v1/health)
-- **Judging Service Health:** [http://localhost:8000/health](http://localhost:8000/health)
+- **Core API Health (Host-Accessible):** [http://localhost:5000/api/v1/health](http://localhost:5000/api/v1/health)
+- **Judging Service Health (Internal):** `http://judging-service:8000/health` (or `http://localhost:8000/health` in bare-metal host dev)
 
 ---
 
@@ -104,13 +117,13 @@ All pre-seeded fixtures share the tournament master password:
 flowchart TD
     subgraph Clients["Clients & Role Portals"]
         Organizer["Organizer Portal<br/>(Admin & Audit)"]
-        Judge["Judge Portal<br/>(Blind Ballots)"]
+        Judge["Judge Portal<br/>(Isolated Ballots)"]
         Hacker["Participant Portal<br/>(Teams & Project)"]
         Public["Community Showcase<br/>(Public Voting)"]
     end
 
     subgraph Edge["Perimeter & Presentation Layer"]
-        Nginx["Nginx Reverse Proxy & Static Host<br/>:3000"]
+        Nginx["Nginx Reverse Proxy & Static Host<br/>:3000 (Host) -> :80"]
         ViteReact["React 18 SPA<br/>Tailwind CSS + Offline Fonts"]
         Nginx --> ViteReact
     end
@@ -119,7 +132,7 @@ flowchart TD
         Express["Express 4 REST Core Engine"]
         Helmet["Security Headers & CSP"]
         AuthMid["JWT Auth & Role Guard"]
-        IsoGuard["Isolation Guard<br/>(Anti-Ballot Tampering)"]
+        IsoGuard["Isolation Guard<br/>(Score Privacy & Assignment Guard)"]
         RateLimit["Sybil Vote Rate Limiter"]
         AuditLog["Audit Logging Middleware"]
         
@@ -130,12 +143,12 @@ flowchart TD
         Express --> AuditLog
     end
 
-    subgraph Analytics["Analytics Microservice (:8000)"]
+    subgraph Analytics["Analytics Microservice (:8000 Internal)"]
         FastAPI["FastAPI Python Microservice"]
         ZScore["Z-Score Normalization"]
         Bayes["Empirical Bayesian Shrinkage"]
         Bradley["Bradley-Terry Pairwise Ranking"]
-        Anomaly["Vote Spike Velocity Detector"]
+        Anomaly["Voting Anomaly & Velocity Detector"]
         
         FastAPI --> ZScore
         FastAPI --> Bayes
@@ -143,7 +156,7 @@ flowchart TD
         FastAPI --> Anomaly
     end
 
-    subgraph Data["Persistence Layer (:27017)"]
+    subgraph Data["Persistence Layer (:27017 Internal)"]
         Mongo[(MongoDB 7.0<br/>dogfood Database)]
         InitSeed["seed/init-mongo.js<br/>Automated Boot Fixtures"]
         InitSeed -.->|On First Boot| Mongo
@@ -165,10 +178,13 @@ flowchart TD
 
 ```text
 DogFood Hackathon Main/
-├── docker-compose.yml          # Multi-container orchestration (172.28.0.0/16 isolated network)
+├── docker-compose.yml          # Multi-container orchestration (172.28.0.0/16 bridge network)
 ├── .env.example                # Canonical environment template
 ├── .dogfood.toml               # Benchmark & specification descriptor
 ├── README.md                   # System documentation & operations guide
+├── ARCHITECTURE.md             # System architecture & container topology deliverable
+├── DATA-MODEL.md               # Data model & schema deliverable
+├── JUDGING.md                  # Judging subsystem specification deliverable
 ├── acceptance-report.txt       # Automated verification report
 │
 ├── seed/                       # Fixture Generation
@@ -183,17 +199,17 @@ DogFood Hackathon Main/
 │   │   ├── routes/             # REST route endpoints (/auth, /teams, /submissions, etc.)
 │   │   ├── services/           # Judge assignment solver, FastAPI client, CSV/JSON exporter
 │   │   └── index.js            # Express application bootstrap & security policy
-│   ├── tests/                  # 22 test suites, 292 passing unit & integration tests
-│   └── Dockerfile              # Production Node.js Alpine container
+│   ├── tests/                  # 22 Jest test suites (unit, integration & security)
+│   └── Dockerfile              # Production Node.js container
 │
 ├── judging-service/            # Python 3.11 & FastAPI Analytics Microservice
 │   ├── app/
 │   │   ├── algorithms/         # Z-Score, Bayesian shrinkage, Bradley-Terry, Anomaly detection
 │   │   ├── models/             # Pydantic validation schemas
-│   │   ├── routes/             # /api/v1/normalize, /health, /pairwise-rank
+│   │   ├── routes/             # /api/v1/normalize, /health, /pairwise-rank, /judge-diagnostics, etc.
 │   │   └── main.py             # FastAPI entrypoint
-│   ├── tests/                  # 74 passing unit & algorithmic tests
-│   └── Dockerfile              # Slim Python ASGI container
+│   ├── tests/                  # Pytest verification test suite
+│   └── Dockerfile              # Python ASGI container
 │
 └── frontend/                   # React 18 SPA (Vite + Tailwind CSS)
     ├── src/
@@ -209,7 +225,7 @@ DogFood Hackathon Main/
 
 ## 📡 REST API & Endpoint Summary
 
-All API endpoints are mounted under `/api/v1`:
+All platform API endpoints are mounted under `/api/v1`:
 
 ### 1. Authentication (`/api/v1/auth`)
 | Method | Endpoint | Access | Description |
@@ -232,6 +248,7 @@ All API endpoints are mounted under `/api/v1`:
 |---|---|---|---|
 | `GET` | `/api/v1/submissions/public` | Public | Paginated list of finalized public submissions with query/track filter |
 | `GET` | `/api/v1/submissions/gallery` | Public | Visual gallery of active tournament submissions with text search |
+| `GET` | `/api/v1/submissions/leaderboard` | Public | Public tournament leaderboard standings (unauthenticated; delegates to leaderboard controller) |
 | `GET` | `/api/v1/submissions/:id` | Public | Fetch submission detail, description markdown, and thumbnail |
 | `GET` | `/api/v1/submissions/my-submission`| Team Member | Retrieve active team's draft or finalized submission |
 | `POST` | `/api/v1/submissions` | Team Member | Create or update draft submission details |
@@ -244,67 +261,83 @@ All API endpoints are mounted under `/api/v1`:
 |---|---|---|---|
 | `GET` | `/api/v1/judging/rubric` | Authenticated | Fetch active tournament rubric criteria, weights, and scale bounds |
 | `GET` | `/api/v1/judging/assigned` | Judge | Retrieve judge's assigned submission queue for their tracks |
-| `POST` | `/api/v1/judging/scores` | Judge (Assigned) | Submit score ballot (enforced by `isolationGuard` to prevent tampering) |
-| `PUT` | `/api/v1/judging/scores/draft` | Judge (Assigned) | Auto-save draft evaluation without finalizing score |
-| `GET` | `/api/v1/judging/scores/:submissionId`| Judge (Assigned)| Retrieve judge's own score ballot (strips competitor scores) |
-| `POST` | `/api/v1/judging/pairwise` | Judge | Record head-to-head comparison between two projects |
+| `POST` | `/api/v1/judging/scores` | Judge (Assigned) | Submit final score ballot (enforced by `isolationGuard` active assignment verification) |
+| `PUT` | `/api/v1/judging/scores/draft` | Judge (Assigned) | Auto-save draft evaluation (status: `in_progress`; rejects updates if already completed) |
+| `GET` | `/api/v1/judging/scores/:submissionId`| Judge (Assigned)| Retrieve judge's own score ballot (strips competitor scores; verified by score ownership) |
+| `POST` | `/api/v1/judging/pairwise` | Judge | Record head-to-head comparison between two projects (bypasses single-submission queue check) |
 | `GET` | `/api/v1/judging/pairwise` | Judge | Fetch recorded pairwise comparisons for track |
+| `POST` | `/api/v1/judging/auto-evaluate` | Judge | Auto-evaluate remaining queue items using rubric median scores (5.0) |
 
 ### 5. Tournament Administration (`/api/v1/admin`)
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/admin/assign-judges` | Organizer | Auto-balance and assign judges to submissions avoiding conflicts of interest |
-| `POST` | `/api/v1/admin/normalize-scores` | Organizer | Dispatch scores to FastAPI service to compute Z-Scores & Bayesian shrinkage |
-| `GET` | `/api/v1/admin/leaderboard` | Organizer | Ranked leaderboard with raw averages, normalized scores, and percentile standings |
-| `GET` | `/api/v1/admin/export/csv` | Organizer | Stream CSV export of final tournament scores and rankings |
+| `POST` | `/api/v1/admin/assign-judges` | Organizer | Global Min-Cost Max-Flow assignment solver enforcing track competency, balance, and quorum |
+| `GET` | `/api/v1/admin/assignments` | Organizer | Inspect all active judge assignments across submissions |
+| `POST` | `/api/v1/admin/normalize-scores` | Organizer | Dispatch scores to FastAPI service (`POST /api/v1/normalize`); failover to in-process fallback if unreachable |
+| `GET` | `/api/v1/admin/leaderboard` | Organizer | Ranked leaderboard with raw averages, normalized scores, and Z-scores (requires organizer role) |
+| `GET` | `/api/v1/admin/export/csv` | Organizer | Stream RFC 4180 CSV export of final tournament scores and rankings |
 | `GET` | `/api/v1/admin/export/json` | Organizer | Export structured JSON tournament evaluation dump |
-| `GET` | `/api/v1/admin/audit-logs` | Organizer | Query immutable audit trail of score modifications and administrative actions |
+| `GET` | `/api/v1/admin/audit-logs` | Organizer | Query application-level audit trail of score modifications and administrative actions |
 | `GET` | `/api/v1/admin/stats` | Organizer | Aggregate statistics (teams count, submission rate, judging completion %) |
 | `GET` | `/api/v1/admin/analytics` | Organizer | Detailed track breakdown, score variances, and judge calibration metrics |
-| `GET/POST`| `/api/v1/admin/rubric` | Organizer | Read or update tournament evaluation criteria and weights |
-| `POST` | `/api/v1/admin/lock-rubric` | Organizer | Irreversibly lock rubric configuration once evaluations begin |
+| `GET/POST`| `/api/v1/admin/rubric` | Organizer | Read or update tournament evaluation criteria and weights (enforces $\sum w = 1.0$) |
+| `POST` | `/api/v1/admin/lock-rubric` | Organizer | Lock rubric configuration against further edits once evaluations begin |
 | `PUT` | `/api/v1/admin/scores/:scoreId/override`| Organizer | Override anomalous score with mandatory audit reason logging |
 | `PUT` | `/api/v1/admin/users/:userId/role` | Organizer | Elevate or modify user permission role |
 
 ### 6. Community Voting (`/api/v1/votes`)
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/votes/:submissionId` | Public / Rate-Limited | Cast community vote for project (IP + User Fingerprinted) |
+| `POST` | `/api/v1/votes/:submissionId` | Public / Rate-Limited | Cast community vote for project (SHA-256 fingerprint hash, 24h TTL index) |
 | `DELETE`| `/api/v1/votes/:submissionId` | Public / Rate-Limited | Revoke / cancel cast community vote |
 | `GET` | `/api/v1/votes/:submissionId` | Public | Check whether client has already voted for submission |
 
-### 7. Judging Analytics Microservice (`:8000`)
+### 7. Internal Judging Analytics Microservice (`:8000`)
+*These internal microservice endpoints are invoked over the Docker network bridge by the Node backend and are not exposed directly on the host in production compose topology:*
+
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/health` | Service health status, algorithm inventory, and uptime |
-| `POST` | `/api/v1/normalize` | Run Z-Score Normalization with Empirical Bayesian shrinkage prior calibration |
-| `POST` | `/api/v1/pairwise-rank` | Compute Bradley-Terry probabilistic rankings from head-to-head comparisons |
-| `POST` | `/api/v1/detect-anomaly` | Detect velocity spikes and voting brigading using sliding-window analysis |
+| `GET` | `/health` | Service health status and uptime |
+| `POST` | `/api/v1/normalize` | Primary normalization: Z-score with Empirical Bayesian shrinkage prior calibration ($K=3.0$) and Min-Max 0–100 scaling |
+| `POST` | `/api/v1/judge-diagnostics` | Statistical judge profiling: severity classification (Strict, Balanced, Lenient) and standard error of the mean (SEM) |
+| `POST` | `/api/v1/pairwise-rank` | Minorize-Maximization (MM) Bradley-Terry preference ranking over connected comparison graphs |
+| `POST` | `/api/v1/voting-anomalies` | Tournament-wide voting anomaly detector: 3-sigma velocity threshold and User-Agent Shannon entropy |
+| `POST` | `/api/v1/detect-anomaly` | Single-submission anomaly detector: 15-vote velocity bursts and timestamp interval periodicity |
 
 ---
 
 ## 🔒 Security & Air-Gap Hardening
 
-- **Offline-First Isolation:** Zero external CDN dependencies; Google Fonts (Inter) are completely vendored offline in `frontend/public/fonts/`.
-- **Egress Hardening:** Docker bridge network configured without external gateway routing; prevents unauthorized speculative outbound queries.
-- **Data Isolation Guard (`isolationGuard`):** Prevents peer judge score visibility and strips competitor evaluations at the middleware layer.
-- **Audit Logging:** Any score override, rubric modification, or role elevation writes immutable event records to `AuditLog`.
-- **Sybil Protection:** Sliding-window rate limiting on voting endpoints prevents automated brigading.
+- **Offline-First Runtime:** The application operates without external runtime APIs, CDNs, or telemetry. All assets, including Inter typography (`frontend/public/fonts/`), are completely vendored offline.
+- **Network Topology:** Services communicate via a dedicated Docker bridge network (`dogfood-net`). Container egress blocking has been verified through container test probes (`nc -zv -w 2 8.8.8.8 53`). Note that building Docker images requires package/image availability unless Docker layers and dependencies are pre-cached.
+- **Score Isolation (`isolationGuard`):** Express middleware intercepts `/api/v1/judging/*` requests, strictly verifying an active `JudgeAssignment` exists for the authenticated judge before permitting access. Peer evaluations are stripped, and single-submission isolation is explicitly bypassed for the pairwise comparison route.
+- **Score Ownership Enforcement:** Judges are prevented from inspecting another judge's score ballots through strict ownership validation in `verifyScoreOwnership`.
+- **Application-Level Audit Trail:** Sensitive mutations (score submissions, rubric locking, score overrides, role elevations) write chronological audit records to MongoDB `AuditLog`.
+- **Sybil Resistance:** Community voting uses SHA-256 IP + User-Agent fingerprint hashing, a 24-hour MongoDB TTL index, and token-bucket sliding-window rate limiting (5 requests/minute per IP).
 
 ---
 
-## 🧪 Comprehensive Test Suite Execution
+## 🧪 Verification Status
 
-Both backend and judging analytics microservices include 100% offline unit and integration test coverage:
+### Latest Verified State
+- **Backend REST API**: 22 Jest test suites verified passing comprehensive unit, integration, and security coverage.
+- **Judging Analytics Microservice**: 169 passing pytest tests (1 environment cache warning, 0 code defects) verified in 1.52s (WBS-53 fresh verification).
+- **Docker Compose Topology**: All 4 services healthy (`dogfood-mongodb`, `dogfood-judging`, `dogfood-api`, `dogfood-frontend`) in single-command boot (WBS-56).
+- **Mathematical & Algorithmic Invariants**: Verified determinism across normalization (Z-score + Bayesian shrinkage, 97.87% variance reduction), Bradley-Terry MM convergence, judge diagnostics severity/SEM, and dual-layer anomaly detection (WBS-44, WBS-53, WBS-56).
+- **Air-Gap / Egress Verification**: Zero external runtime network requests, offline font delivery, TCP egress blocked (`nc -zv -w 2 8.8.8.8 53` exit check).
 
-```powershell
-# 1. Run Node.js REST API test suites (22 suites, 292 tests)
+*Historical verification milestones (e.g. initial 74-test and 125-test passes, WBS-44, WBS-53) and complete execution logs remain archived in `acceptance-report.txt`.*
+
+### Test Suite Execution Commands
+
+```bash
+# 1. Run Node.js REST API test suites
 cd backend
 npm test
 
-# 2. Run Python Judging Analytics tests (74 tests)
+# 2. Run Python Judging Analytics tests
 cd ../judging-service
-python -m pytest
+pytest tests
 
 # 3. Verify Docker network air-gapped egress isolation
 docker exec dogfood-api sh -c "nc -zv -w 2 8.8.8.8 53 || echo 'Egress Successfully Blocked'"
@@ -312,7 +345,7 @@ docker exec dogfood-api sh -c "nc -zv -w 2 8.8.8.8 53 || echo 'Egress Successful
 
 ---
 
-## 🏷️ Release
+## 🏷️ Release & Specification
 
-Tagged release: **`v1.0.0`**  
-*Release Note: "Dogfood 2026 Tournament Release"*
+Specification version: **`1.0.0`** (conforming to `.dogfood.toml`).
+Target event: **`Hackathon Raptors 2026`**.
