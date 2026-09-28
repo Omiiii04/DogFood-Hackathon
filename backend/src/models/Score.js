@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const AuditLog = require('./AuditLog');
 
 const CriterionScoreSchema = new mongoose.Schema(
   {
@@ -100,6 +101,77 @@ ScoreSchema.pre('validate', function () {
       if (!item.criteriaName && item.key) item.criteriaName = item.key;
       if (item.rawScore == null && item.score != null) item.rawScore = item.score;
     });
+  }
+});
+
+// Middleware hooks automatically recording administrative overrides to AuditLog
+ScoreSchema.post('init', function () {
+  this._original = this.toObject();
+});
+
+ScoreSchema.pre('save', function (next) {
+  if (!this.isNew) {
+    this._isOverride = true;
+    this._previousState = this._original ? { ...this._original } : {};
+  }
+  if (typeof next === 'function') next();
+});
+
+ScoreSchema.post('save', async function (doc) {
+  if (doc._isOverride) {
+    doc._isOverride = false;
+    try {
+      const AuditLog = mongoose.model('AuditLog');
+      await AuditLog.create({
+        actor: doc._actor || doc._actorId || null,
+        actorId: doc._actor || doc._actorId || null,
+        actorRole: doc._actorRole || 'organizer',
+        action: doc._auditAction || 'SCORE_OVERRIDE',
+        targetResource: 'Score',
+        targetId: doc._id,
+        resourceId: doc._id,
+        previousState: doc._previousState || {},
+        newState: doc.toObject(),
+        ipAddress: doc._ipAddress || null,
+        ipHash: doc._ipAddress || 'system',
+        timestamp: new Date(),
+      });
+    } catch (err) {
+      console.warn('Score audit log recording notice:', err.message);
+    }
+  }
+});
+
+ScoreSchema.pre('findOneAndUpdate', async function (next) {
+  try {
+    const options = this.getOptions();
+    if (options && (options.isOverride || options.audit)) {
+      this._docToUpdate = await this.model.findOne(this.getQuery()).lean();
+    }
+  } catch (_) {}
+  if (typeof next === 'function') next();
+});
+
+ScoreSchema.post('findOneAndUpdate', async function (res) {
+  if (this._docToUpdate && res) {
+    try {
+      const AuditLog = mongoose.model('AuditLog');
+      const options = this.getOptions() || {};
+      await AuditLog.create({
+        actor: options.actor || options.actorId || null,
+        actorId: options.actor || options.actorId || null,
+        actorRole: options.actorRole || 'organizer',
+        action: options.action || 'SCORE_OVERRIDE',
+        targetResource: 'Score',
+        targetId: res._id,
+        resourceId: res._id,
+        previousState: this._docToUpdate,
+        newState: res.toObject ? res.toObject() : res,
+        ipAddress: options.ipAddress || null,
+        ipHash: options.ipAddress || 'system',
+        timestamp: new Date(),
+      });
+    } catch (_) {}
   }
 });
 

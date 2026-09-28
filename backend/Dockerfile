@@ -14,7 +14,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Ensure upload directory exists and has correct ownership for the non-root node user
-RUN mkdir -p /app/uploads && chown -R node:node /app
+RUN mkdir -p /app/uploads/thumbnails && chown -R node:node /app
 
 # Copy production node_modules from dependencies stage
 COPY --chown=node:node --from=dependencies /app/node_modules ./node_modules

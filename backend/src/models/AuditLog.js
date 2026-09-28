@@ -2,43 +2,54 @@ const mongoose = require('mongoose');
 
 const AuditLogSchema = new mongoose.Schema(
   {
-    actorId: {
+    actor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      index: true,
+      alias: 'actorId',
     },
     actorRole: {
       type: String,
-      required: true,
+      default: 'system',
     },
     action: {
       type: String,
-      enum: [
-        'SUBMISSION_LOCKED',
-        'SCORE_SUBMITTED',
-        'SCORE_OVERRIDDEN',
-        'JUDGES_ASSIGNED',
-        'NORMALIZATION_EXECUTED',
-        'RUBRIC_MODIFIED',
-      ],
       required: true,
       index: true,
     },
     targetResource: {
       type: String,
       required: true,
+      index: true,
     },
-    resourceId: {
+    targetId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
+      index: true,
+      alias: 'resourceId',
     },
-    payload: {
+    previousState: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
-    ipHash: {
+    newState: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    payload: {
+      type: mongoose.Schema.Types.Mixed,
+      default: function () {
+        if (this.previousState || this.newState) {
+          return {
+            previousState: this.previousState || {},
+            newState: this.newState || {},
+          };
+        }
+        return {};
+      },
+    },
+    ipAddress: {
       type: String,
-      required: true,
+      alias: 'ipHash',
     },
     timestamp: {
       type: Date,
@@ -48,8 +59,26 @@ const AuditLogSchema = new mongoose.Schema(
   },
   {
     timestamps: false,
-    capped: false, // Persistent storage
   }
 );
+
+AuditLogSchema.pre('validate', function () {
+  if ((!this.payload || Object.keys(this.payload).length === 0) && (this.previousState || this.newState)) {
+    this.payload = { previousState: this.previousState || {}, newState: this.newState || {} };
+  }
+  if ((!this.previousState || Object.keys(this.previousState).length === 0) && this.payload?.previousState) {
+    this.previousState = this.payload.previousState;
+  }
+  if ((!this.newState || Object.keys(this.newState).length === 0) && this.payload?.newState) {
+    this.newState = this.payload.newState;
+  }
+});
+
+AuditLogSchema.pre('save', function (next) {
+  if ((!this.payload || Object.keys(this.payload).length === 0) && (this.previousState || this.newState)) {
+    this.payload = { previousState: this.previousState || {}, newState: this.newState || {} };
+  }
+  if (typeof next === 'function') next();
+});
 
 module.exports = mongoose.model('AuditLog', AuditLogSchema);

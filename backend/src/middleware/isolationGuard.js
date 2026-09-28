@@ -25,6 +25,11 @@ const isolationGuard = async (req, res, next) => {
       });
     }
 
+    // Allow pairwise comparison endpoint without single submission assignment guard
+    if (req.path === '/pairwise' || req.originalUrl?.includes('/pairwise')) {
+      return next();
+    }
+
     // Resolve target submissionId from body, params, query, or scoreId
     let submissionId =
       req.body?.submissionId ||
@@ -43,7 +48,7 @@ const isolationGuard = async (req, res, next) => {
       const urlPath = req.path || req.originalUrl || '';
       const scoreMatch = urlPath.match(/\/scores\/([a-f0-9]{24}|[a-zA-Z0-9_-]+)/i);
       const subMatch = urlPath.match(/\/submissions\/([a-f0-9]{24}|[a-zA-Z0-9_-]+)/i);
-      if (scoreMatch) {
+      if (scoreMatch && scoreMatch[1].toLowerCase() !== 'draft') {
         submissionId = scoreMatch[1];
       } else if (subMatch) {
         submissionId = subMatch[1];
@@ -60,7 +65,10 @@ const isolationGuard = async (req, res, next) => {
 
     // If the request does not target a specific project evaluation (e.g. /rubric or /assigned queue)
     if (!submissionId) {
-      if (req.method === 'POST' && (req.path === '/scores' || req.originalUrl?.includes('/scores'))) {
+      if (
+        ['POST', 'PUT'].includes(req.method) &&
+        (req.path === '/scores' || req.path === '/scores/draft' || req.originalUrl?.includes('/scores'))
+      ) {
         return res.status(400).json({
           success: false,
           error: 'submissionId is required.',

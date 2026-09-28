@@ -6,6 +6,7 @@ const Event = require('../models/Event');
 const Rubric = require('../models/Rubric');
 const AuditLog = require('../models/AuditLog');
 const crypto = require('crypto');
+const PairwiseComparison = require('../models/PairwiseComparison');
 
 exports.getAssignedQueue = async (req, res, next) => {
   try {
@@ -85,6 +86,43 @@ exports.getAssignedQueue = async (req, res, next) => {
   }
 };
 
+const isValidScore = (score) => {
+  if (typeof score !== 'number' || isNaN(score) || !Number.isFinite(score)) return false;
+  if (score < 1.0 || score > 10.0) return false;
+  const doubled = Math.round(score * 1000) / 1000 * 2;
+  return Math.abs(doubled - Math.round(doubled)) < 1e-6;
+};
+
+const resolveRubricWeights = async (criteriaScores) => {
+  const missingAnyWeight = criteriaScores.some(
+    (item) => item.weight === undefined || typeof item.weight !== 'number'
+  );
+
+  if (!missingAnyWeight) return null;
+
+  let event = await Event.findOne({ status: 'active' });
+  if (!event) event = await Event.findOne().sort({ createdAt: -1 });
+  if (event) {
+    const rubricDoc = await Rubric.findOne({ eventId: event._id });
+    if (rubricDoc && rubricDoc.criteria && rubricDoc.criteria.length > 0) {
+      const map = new Map();
+      rubricDoc.criteria.forEach((c) => {
+        map.set(c.key, c.weight);
+        if (c.label) map.set(c.label, c.weight);
+      });
+      return map;
+    } else if (event.rubric && event.rubric.length > 0) {
+      const map = new Map();
+      event.rubric.forEach((c) => {
+        map.set(c.name, c.weight);
+        if (c.key) map.set(c.key, c.weight);
+      });
+      return map;
+    }
+  }
+  return null;
+};
+
 exports.submitScore = async (req, res, next) => {
   try {
     const { submissionId, criteriaScores, privateNotes } = req.body;
@@ -97,35 +135,65 @@ exports.submitScore = async (req, res, next) => {
       });
     }
 
-    // Calculate total weighted raw score
+    const rubricMap = await resolveRubricWeights(criteriaScores);
+
     let totalWeightedScore = 0;
     let totalWeight = 0;
 
-    const normalizedCriteriaScores = criteriaScores.map((item) => {
+    const normalizedCriteriaScores = [];
+    for (const item of criteriaScores) {
       const key = item.key || item.criteriaName;
-      const score = item.score !== undefined ? item.score : item.rawScore;
-      const weight = item.weight !== undefined ? item.weight : 1.0;
-      return {
+      if (!key) {
+        return res.status(400).json({
+          success: false,
+          error: 'Each criterion must have a key or criteriaName.',
+        });
+      }
+
+      const rawVal = item.score !== undefined ? item.score : item.rawScore;
+      if (rawVal === undefined || rawVal === null || rawVal === '') {
+        return res.status(400).json({
+          success: false,
+          error: `Score is required for criterion ${key}.`,
+        });
+      }
+
+      const score = Number(rawVal);
+      if (!isValidScore(score)) {
+        return res.status(400).json({
+          success: false,
+          error: `Raw score for ${key} must be between 1.0 and 10.0 with step 0.5.`,
+        });
+      }
+
+      let weight = item.weight;
+      if (weight === undefined || typeof weight !== 'number') {
+        if (rubricMap && rubricMap.has(key)) {
+          weight = rubricMap.get(key);
+        } else {
+          weight = 1.0 / criteriaScores.length;
+        }
+      }
+
+      normalizedCriteriaScores.push({
         key,
         score,
         criteriaName: item.criteriaName || key,
         rawScore: score,
         weight,
-      };
-    });
+      });
 
-    for (const item of normalizedCriteriaScores) {
-      if (item.score < 1.0 || item.score > 10.0) {
-        return res.status(400).json({
-          success: false,
-          error: `Raw score for ${item.key} must be between 1.0 and 10.0.`,
-        });
-      }
-      totalWeightedScore += item.score * item.weight;
-      totalWeight += item.weight;
+      totalWeightedScore += score * weight;
+      totalWeight += weight;
     }
 
-    const rawCompositeScore = Number((totalWeightedScore / totalWeight).toFixed(3));
+    // rawCompositeScore = \sum (w_c \times score_c)
+    let rawCompositeScore;
+    if (Math.abs(totalWeight - 1.0) < 1e-5) {
+      rawCompositeScore = Number(totalWeightedScore.toFixed(3));
+    } else {
+      rawCompositeScore = Number((totalWeightedScore / (totalWeight || 1)).toFixed(3));
+    }
 
     // Upsert score
     const score = await Score.findOneAndUpdate(
@@ -157,7 +225,8 @@ exports.submitScore = async (req, res, next) => {
           { judge: userId, submission: submissionId },
         ],
       },
-      { status: 'completed' }
+      { status: 'completed' },
+      { new: true }
     );
 
     // Log to audit log
@@ -176,6 +245,148 @@ exports.submitScore = async (req, res, next) => {
       success: true,
       message: 'Evaluation ballot successfully recorded.',
       data: { score },
+      score,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.saveDraftScore = async (req, res, next) => {
+  try {
+    const { submissionId, criteriaScores, privateNotes } = req.body;
+    const userId = req.user._id || req.user.id;
+
+    if (!submissionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'submissionId is required.',
+      });
+    }
+
+    // Reject draft updates for completed evaluation ballots
+    const existingAssignment = await JudgeAssignment.findOne({
+      $or: [
+        { judgeId: userId, submissionId: submissionId },
+        { judge: userId, submission: submissionId },
+      ],
+    });
+
+    if (existingAssignment && existingAssignment.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot update draft for an evaluation ballot that has already been submitted.',
+      });
+    }
+
+    let normalizedCriteriaScores = [];
+    let totalWeightedScore = 0;
+    let totalWeight = 0;
+
+    if (Array.isArray(criteriaScores) && criteriaScores.length > 0) {
+      const rubricMap = await resolveRubricWeights(criteriaScores);
+
+      for (const item of criteriaScores) {
+        const key = item.key || item.criteriaName;
+        if (!key) continue;
+
+        const rawVal = item.score !== undefined ? item.score : item.rawScore;
+        if (rawVal === undefined || rawVal === null || rawVal === '') continue;
+
+        const score = Number(rawVal);
+        if (!isValidScore(score)) {
+          return res.status(400).json({
+            success: false,
+            error: `Raw score for ${key} must be between 1.0 and 10.0 with step 0.5.`,
+          });
+        }
+
+        let weight = item.weight;
+        if (weight === undefined || typeof weight !== 'number') {
+          if (rubricMap && rubricMap.has(key)) {
+            weight = rubricMap.get(key);
+          } else {
+            weight = 1.0 / criteriaScores.length;
+          }
+        }
+
+        normalizedCriteriaScores.push({
+          key,
+          score,
+          criteriaName: item.criteriaName || key,
+          rawScore: score,
+          weight,
+        });
+
+        totalWeightedScore += score * weight;
+        totalWeight += weight;
+      }
+    }
+
+    let rawCompositeScore = 0;
+    if (totalWeight > 0) {
+      if (Math.abs(totalWeight - 1.0) < 1e-5) {
+        rawCompositeScore = Number(totalWeightedScore.toFixed(3));
+      } else {
+        rawCompositeScore = Number((totalWeightedScore / totalWeight).toFixed(3));
+      }
+    } else {
+      const existingScore = await Score.findOne({
+        $or: [
+          { judge: userId, submission: submissionId },
+          { judgeId: userId, submissionId: submissionId },
+        ],
+      });
+      if (existingScore && existingScore.rawCompositeScore != null) {
+        rawCompositeScore = existingScore.rawCompositeScore;
+      }
+    }
+
+    const updateDoc = {
+      judge: userId,
+      submission: submissionId,
+      judgeId: userId,
+      submissionId: submissionId,
+      rawCompositeScore,
+      totalRawScore: rawCompositeScore,
+      isFinal: false,
+    };
+
+    if (normalizedCriteriaScores.length > 0) {
+      updateDoc.criteriaScores = normalizedCriteriaScores;
+    }
+    if (privateNotes !== undefined) {
+      updateDoc.privateNotes = privateNotes;
+    }
+
+    const score = await Score.findOneAndUpdate(
+      {
+        $or: [
+          { judge: userId, submission: submissionId },
+          { judgeId: userId, submissionId: submissionId },
+        ],
+      },
+      updateDoc,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    // Update assignment status to in_progress
+    await JudgeAssignment.findOneAndUpdate(
+      {
+        $or: [
+          { judgeId: userId, submissionId: submissionId },
+          { judge: userId, submission: submissionId },
+        ],
+        status: { $ne: 'completed' },
+      },
+      { status: 'in_progress' }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Evaluation draft auto-saved successfully.',
+      data: { score },
+      score,
     });
   } catch (error) {
     next(error);
@@ -308,3 +519,155 @@ exports.getEventRubric = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Record a head-to-head pairwise comparison between two projects (A > B or B > A).
+ * POST /api/v1/judging/pairwise
+ */
+exports.recordPairwiseComparison = async (req, res, next) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Authentication required.',
+      });
+    }
+
+    const {
+      submissionA,
+      submissionB,
+      submission_a,
+      submission_b,
+      projectA,
+      projectB,
+      winner,
+      notes,
+      eventId,
+    } = req.body;
+
+    const subA = submissionA || submission_a || projectA;
+    const subB = submissionB || submission_b || projectB;
+
+    if (!subA || !subB) {
+      return res.status(400).json({
+        success: false,
+        error: 'Both submissionA and submissionB are required.',
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(subA) || !mongoose.Types.ObjectId.isValid(subB)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid submission ID format.',
+      });
+    }
+
+    if (subA.toString() === subB.toString()) {
+      return res.status(400).json({
+        success: false,
+        error: 'submissionA and submissionB must be distinct projects.',
+      });
+    }
+
+    if (!winner) {
+      return res.status(400).json({
+        success: false,
+        error: 'Winner is required.',
+      });
+    }
+
+    let resolvedWinner = winner;
+    const winnerStr = winner.toString().toLowerCase();
+    if (
+      winnerStr === 'submission_a' ||
+      winnerStr === 'submissiona' ||
+      winnerStr === 'projecta' ||
+      winnerStr === 'a'
+    ) {
+      resolvedWinner = subA;
+    } else if (
+      winnerStr === 'submission_b' ||
+      winnerStr === 'submissionb' ||
+      winnerStr === 'projectb' ||
+      winnerStr === 'b'
+    ) {
+      resolvedWinner = subB;
+    }
+
+    if (
+      resolvedWinner.toString() !== subA.toString() &&
+      resolvedWinner.toString() !== subB.toString()
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Winner must be either submissionA or submissionB.',
+      });
+    }
+
+    // Verify both submissions exist in the database
+    const [docA, docB] = await Promise.all([
+      Submission.findById(subA),
+      Submission.findById(subB),
+    ]);
+
+    if (!docA || !docB) {
+      return res.status(404).json({
+        success: false,
+        error: 'One or both target submissions could not be found.',
+      });
+    }
+
+    const resolvedEventId = eventId || docA.eventId || docA.event || null;
+
+    const comparison = await PairwiseComparison.create({
+      judge: userId,
+      submissionA: subA,
+      submissionB: subB,
+      winner: resolvedWinner,
+      notes: notes || '',
+      eventId: resolvedEventId,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Pairwise comparison successfully recorded.',
+      data: { comparison },
+      comparison,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get pairwise comparisons for an event or judge.
+ * GET /api/v1/judging/pairwise
+ */
+exports.getPairwiseComparisons = async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.user?.role === 'judge') {
+      filter.judge = req.user._id || req.user.id;
+    }
+    if (req.query.eventId) {
+      filter.eventId = req.query.eventId;
+    }
+
+    const comparisons = await PairwiseComparison.find(filter)
+      .populate('judge', 'name email role')
+      .populate('submissionA', 'title track')
+      .populate('submissionB', 'title track')
+      .populate('winner', 'title track')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: { comparisons },
+      comparisons,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

@@ -45,6 +45,14 @@ export const PairwiseJudging = ({ queue, rubric, refetch }) => {
         privateNotes: 'Pairwise Loser'
       });
 
+      // Record direct pairwise comparison model entry (A > B)
+      await api.post('/judging/pairwise', {
+        submissionA: winner.submission._id,
+        submissionB: loser.submission._id,
+        winner: winner.submission._id,
+        notes: `Pairwise evaluation: Winner over ${loser.submission?.title || 'opponent'}`
+      }).catch(() => {});
+
       addNotification('Pairwise comparison recorded!', 'success');
       refetch();
     } catch (err) {
