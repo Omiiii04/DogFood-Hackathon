@@ -3,6 +3,7 @@ import { LeaderboardTable } from '../components/LeaderboardTable';
 import { ScoreDistributionChart } from '../components/ScoreDistributionChart';
 import { JudgeVarianceChart } from '../components/JudgeVarianceChart';
 import { AuditLogViewer } from '../components/AuditLogViewer';
+import { RubricDesigner } from '../components/RubricDesigner';
 import { useNotification } from '../context/NotificationContext';
 import api from '../services/api';
 import {
@@ -215,6 +216,9 @@ export const AdminDashboard = () => {
           <JudgeVarianceChart judgeStats={stats?.judgeStats || []} />
         </div>
       </div>
+
+      {/* Rubric Designer */}
+      <RubricDesigner />
 
       {/* Normalization Engine Control */}
       <div className="bg-surface border border-border-subtle rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">

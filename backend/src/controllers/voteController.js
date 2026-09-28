@@ -22,7 +22,6 @@ exports.castVote = async (req, res, next) => {
       });
     }
 
-    // Generate cryptographic fingerprint from IP + User Agent
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
     const userAgent = req.headers['user-agent'] || 'unknown';
     const secretKey = process.env.JWT_SECRET || 'raptors-offline-cryptographic-master-key-2026';
@@ -32,7 +31,6 @@ exports.castVote = async (req, res, next) => {
       .update(`${clientIp}-${userAgent}`)
       .digest('hex');
 
-    // Attempt to register vote
     try {
       await Vote.create({
         submissionId: submission._id,
@@ -49,11 +47,9 @@ exports.castVote = async (req, res, next) => {
       throw err;
     }
 
-    // Atomically increment publicVoteCount
     submission.publicVoteCount = (submission.publicVoteCount || 0) + 1;
     await submission.save();
 
-    // Anomaly detector: Flag bursts (e.g. > 10 votes in last minute)
     const recentVotes = await Vote.countDocuments({
       submissionId: submission._id,
       createdAt: { $gte: new Date(Date.now() - 60 * 1000) }
@@ -66,7 +62,7 @@ exports.castVote = async (req, res, next) => {
         targetResource: 'Submission',
         resourceId: submission._id,
         payload: { message: 'Velocity spike detected', recentVotes, submissionId: submission._id }
-      }).catch(() => {}); // silent fail if audit log errors
+      }).catch(() => { });
     }
 
     return res.status(200).json({
