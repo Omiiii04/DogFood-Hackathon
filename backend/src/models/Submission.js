@@ -139,7 +139,7 @@ SubmissionSchema.pre('validate', function (next) {
 
 // Pre-save hook ensuring submittedAt is recorded when submitted
 SubmissionSchema.pre('save', function (next) {
-  if (this.isModified('status') && this.status === 'submitted' && !this.submittedAt) {
+  if (this.isModified('status') && (this.status === 'submitted' || this.status === 'locked') && !this.submittedAt) {
     this.submittedAt = new Date();
   }
   next();

@@ -24,7 +24,7 @@ exports.getAssignedQueue = async (req, res, next) => {
     } catch (_) {}
 
     // Query assignments strictly belonging to req.user.id
-    const assignments = await JudgeAssignment.find({
+    let assignments = await JudgeAssignment.find({
       $or: [{ judgeId: userId }, { judge: userId }],
     })
       .populate({
@@ -36,9 +36,32 @@ exports.getAssignedQueue = async (req, res, next) => {
       })
       .sort({ status: 1, createdAt: 1 });
 
+    // If judge has no assignments, try to explicitly assign them to submitted projects
+    if (assignments.length === 0 && req.user?.role === 'judge') {
+      try {
+        const { autoAssignSubmission } = require('../services/assignmentSolver');
+        const submittedSubs = await Submission.find({ status: { $in: ['submitted', 'locked'] } });
+        for (const sub of submittedSubs) {
+          await autoAssignSubmission(sub);
+        }
+        // Re-fetch after attempting assignment
+        assignments = await JudgeAssignment.find({
+          $or: [{ judgeId: userId }, { judge: userId }],
+        })
+          .populate({
+            path: 'submissionId',
+            select: 'title tagline description githubUrl repoUrl demoVideoUrl demoUrl thumbnailUrl track status team teamId publicVoteCount submittedAt',
+            populate: [
+              { path: 'team', select: 'name' },
+            ],
+          })
+          .sort({ status: 1, createdAt: 1 });
+      } catch (_) {}
+    }
+
     const isOrganizerOrAdmin = ['organizer', 'admin'].includes(req.user?.role);
-    if (assignments.length === 0 && isOrganizerOrAdmin) {
-      // For organizers and admins, surface all active submitted projects in the portal
+    if (isOrganizerOrAdmin) {
+      // For organizers and admins, always surface all active submitted projects in the portal
       const allSubs = await Submission.find({ status: { $in: ['submitted', 'locked'] } })
         .select('title tagline description githubUrl repoUrl demoVideoUrl demoUrl thumbnailUrl track status team publicVoteCount submittedAt createdAt')
         .populate('team', 'name')
@@ -138,6 +161,7 @@ exports.getAssignedQueue = async (req, res, next) => {
     next(error);
   }
 };
+
 
 const isValidScore = (score) => {
   if (typeof score !== 'number' || isNaN(score) || !Number.isFinite(score)) return false;

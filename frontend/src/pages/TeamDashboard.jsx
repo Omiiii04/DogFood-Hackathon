@@ -146,7 +146,7 @@ export const TeamDashboard = () => {
   const isCurrentUserCaptain = currentUserId && captainUserId && currentUserId === captainUserId;
 
   const submissionStatusText =
-    submissionData?.status === 'submitted'
+    submissionData?.status === 'locked' || submissionData?.status === 'submitted'
       ? 'Submitted & locked for judging.'
       : submissionData
       ? 'Draft in progress — finalize before deadline.'
@@ -529,7 +529,7 @@ export const TeamDashboard = () => {
                 )}
               </div>
             </div>
-          ) : submissionData?.status === 'submitted' || submissionData?.status === 'locked' ? (
+          ) : submissionData?.status === 'locked' || submissionData?.status === 'submitted' ? (
             /* ── Locked / Submitted State (Pending Evaluation) ─────────────── */
             <div className="px-6 sm:px-8 py-5 border-t border-status-success/30 bg-status-success/6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -550,15 +550,14 @@ export const TeamDashboard = () => {
                     </p>
                   </div>
                 </div>
-                <Link
-                  to="/submit"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface-container border border-status-success/30 text-status-success font-title-md text-title-md font-semibold opacity-80 cursor-default pointer-events-none whitespace-nowrap"
-                  tabIndex={-1}
-                  aria-disabled="true"
+                <button
+                  onClick={fetchTeam}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/30 text-primary font-semibold text-sm hover:bg-primary/20 active:scale-[0.98] transition-all whitespace-nowrap"
+                  title="Check for evaluation results"
                 >
-                  <Lock className="w-4 h-4" />
-                  <span>Submission Locked</span>
-                </Link>
+                  <span className="material-symbols-outlined text-[16px]">refresh</span>
+                  <span>Refresh Results</span>
+                </button>
               </div>
             </div>
           ) : (

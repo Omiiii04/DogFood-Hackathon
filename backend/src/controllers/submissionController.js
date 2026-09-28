@@ -346,7 +346,7 @@ exports.finalizeSubmission = async (req, res, next) => {
       });
     }
 
-    submission.status = 'submitted';
+    submission.status = 'locked';
     submission.submittedAt = new Date();
     await submission.save();
 

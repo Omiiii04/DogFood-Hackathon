@@ -49,6 +49,37 @@ JudgeAssignmentSchema.virtual('submission', {
   justOne: true,
 });
 
+JudgeAssignmentSchema.pre(
+  ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'deleteMany', 'countDocuments'],
+  function () {
+    const filter = this.getQuery ? this.getQuery() : null;
+    if (filter) {
+      if (filter.judge !== undefined && filter.judgeId === undefined) {
+        filter.judgeId = filter.judge;
+        delete filter.judge;
+      }
+      if (filter.submission !== undefined && filter.submissionId === undefined) {
+        filter.submissionId = filter.submission;
+        delete filter.submission;
+      }
+      if (Array.isArray(filter.$or)) {
+        filter.$or = filter.$or.map((clause) => {
+          const mapped = { ...clause };
+          if (mapped.judge !== undefined && mapped.judgeId === undefined) {
+            mapped.judgeId = mapped.judge;
+            delete mapped.judge;
+          }
+          if (mapped.submission !== undefined && mapped.submissionId === undefined) {
+            mapped.submissionId = mapped.submission;
+            delete mapped.submission;
+          }
+          return mapped;
+        });
+      }
+    }
+  }
+);
+
 JudgeAssignmentSchema.pre('validate', function (next) {
   if (this.judge && !this.judgeId) this.judgeId = this.judge;
   if (this.submission && !this.submissionId) this.submissionId = this.submission;

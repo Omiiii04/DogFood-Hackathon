@@ -426,7 +426,7 @@ async function autoAssignSubmission(submission, preloadedJudges = null) {
     return a.count - b.count;
   });
 
-  const target = Math.min(2, judgeLoads.length);
+  const target = Math.min(3, judgeLoads.length);
   const selected = judgeLoads.slice(0, target).map((x) => x.judge);
 
   const results = [];
@@ -483,18 +483,30 @@ async function ensureSubmissionsAssigned() {
   const judges = await User.find({ role: 'judge' });
   if (!judges.length) return [];
 
-  const existingAssignments = await JudgeAssignment.find().select('submissionId submission');
-  const assignedSet = new Set(
-    existingAssignments
-      .map((a) => (a.submissionId?._id || a.submission?._id || a.submissionId || a.submission)?.toString())
-      .filter(Boolean)
-  );
+  // Count existing assignments per submission
+  const existingAssignments = await JudgeAssignment.find().select('submissionId submission judgeId judge');
+  const assignmentCountMap = {};
+  const assignedJudgesMap = {}; // submissionId -> Set of judgeIds already assigned
 
-  const unassigned = submissions.filter((s) => !assignedSet.has(s._id.toString()));
-  if (!unassigned.length) return [];
+  existingAssignments.forEach((a) => {
+    const subId = (a.submissionId?._id || a.submission?._id || a.submissionId || a.submission)?.toString();
+    const jId = (a.judgeId?._id || a.judge?._id || a.judgeId || a.judge)?.toString();
+    if (subId) {
+      assignmentCountMap[subId] = (assignmentCountMap[subId] || 0) + 1;
+      if (!assignedJudgesMap[subId]) assignedJudgesMap[subId] = new Set();
+      if (jId) assignedJudgesMap[subId].add(jId);
+    }
+  });
+
+  // Find submissions with fewer than 3 judge assignments (target quorum)
+  const TARGET_QUORUM = 3;
+  const needsAssignment = submissions.filter(
+    (s) => (assignmentCountMap[s._id.toString()] || 0) < TARGET_QUORUM
+  );
+  if (!needsAssignment.length) return [];
 
   const created = [];
-  for (const sub of unassigned) {
+  for (const sub of needsAssignment) {
     const res = await autoAssignSubmission(sub, judges);
     created.push(...res);
   }
