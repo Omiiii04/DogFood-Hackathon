@@ -82,14 +82,6 @@ const SubmissionSchema = new mongoose.Schema(
   }
 );
 
-// Virtual populate options for alias teamId
-SubmissionSchema.virtual('teamId', {
-  ref: 'Team',
-  localField: 'team',
-  foreignField: '_id',
-  justOne: true,
-});
-
 // Full-text search index for public gallery
 SubmissionSchema.index({ title: 'text', tagline: 'text', track: 'text' });
 
@@ -104,6 +96,46 @@ SubmissionSchema.pre(
     }
   }
 );
+
+// Pre-init hook mapping raw BSON fields (e.g. from init-mongo.js fixtures) during document hydration
+SubmissionSchema.pre('init', function (raw) {
+  if (raw) {
+    if (raw.teamId && !raw.team) raw.team = raw.teamId;
+    if (raw.descriptionMarkdown && !raw.description) raw.description = raw.descriptionMarkdown;
+    if (raw.repoUrl && !raw.githubUrl) raw.githubUrl = raw.repoUrl;
+    if (raw.demoUrl && !raw.demoVideoUrl) raw.demoVideoUrl = raw.demoUrl;
+    if (raw.thumbnailPath && !raw.thumbnailUrl) raw.thumbnailUrl = raw.thumbnailPath;
+  }
+  return raw;
+});
+
+// Virtual populate options for alias teamId
+SubmissionSchema.virtual('teamId', {
+  ref: 'Team',
+  localField: 'team',
+  foreignField: '_id',
+  justOne: true,
+});
+
+// Pre-validate hook ensuring legacy/seed aliases are populated on raw documents
+SubmissionSchema.pre('validate', function (next) {
+  if (!this.team && (this.teamId || this._doc?.teamId)) {
+    this.team = this.teamId || this._doc?.teamId;
+  }
+  if (!this.description && (this.descriptionMarkdown || this._doc?.descriptionMarkdown)) {
+    this.description = this.descriptionMarkdown || this._doc?.descriptionMarkdown;
+  }
+  if (!this.githubUrl && (this.repoUrl || this._doc?.repoUrl)) {
+    this.githubUrl = this.repoUrl || this._doc?.repoUrl;
+  }
+  if (!this.demoVideoUrl && (this.demoUrl || this._doc?.demoUrl)) {
+    this.demoVideoUrl = this.demoUrl || this._doc?.demoUrl;
+  }
+  if (!this.thumbnailUrl && (this.thumbnailPath || this._doc?.thumbnailPath)) {
+    this.thumbnailUrl = this.thumbnailPath || this._doc?.thumbnailPath;
+  }
+  if (typeof next === 'function') next();
+});
 
 // Pre-save hook ensuring submittedAt is recorded when submitted
 SubmissionSchema.pre('save', function (next) {

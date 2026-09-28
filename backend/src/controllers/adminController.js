@@ -351,9 +351,39 @@ exports.getLeaderboard = async (req, res, next) => {
       item.rank = index + 1;
     });
 
+    let isFallback = false;
+    let algorithm = 'z_score_bayesian_shrinkage';
+    let cachedAt = null;
+
+    try {
+      const eventId = req.query?.eventId || req.body?.eventId;
+      let latestCache = null;
+      if (LeaderboardCache && typeof LeaderboardCache.getLatest === 'function') {
+        latestCache = await LeaderboardCache.getLatest(eventId);
+        if (latestCache && typeof latestCache.toObject === 'function') {
+          latestCache = latestCache.toObject();
+        } else if (latestCache && typeof latestCache.lean === 'function') {
+          latestCache = await latestCache.lean();
+        }
+      } else if (LeaderboardCache) {
+        const query = eventId ? { eventId: eventId.toString() } : {};
+        latestCache = await LeaderboardCache.findOne(query).sort({ updatedAt: -1 }).lean();
+      }
+      if (latestCache) {
+        isFallback = Boolean(latestCache.isFallback || latestCache.is_fallback);
+        algorithm = latestCache.algorithm || algorithm;
+        cachedAt = latestCache.cachedAt || latestCache.updatedAt || null;
+      }
+    } catch (_) {}
+
     return res.status(200).json({
       success: true,
-      data: { leaderboard },
+      data: {
+        leaderboard,
+        isFallback,
+        algorithm,
+        cachedAt,
+      },
     });
   } catch (error) {
     next(error);
@@ -365,7 +395,7 @@ exports.getLeaderboard = async (req, res, next) => {
  */
 const buildExportStandingsData = async (eventId) => {
   const submissionFilter = { status: { $in: ['submitted', 'locked'] } };
-  if (eventId && eventId !== 'all') {
+  if (eventId && eventId !== 'all' && mongoose.Types.ObjectId.isValid(eventId)) {
     submissionFilter.$or = [{ event: eventId }, { eventId: eventId }];
   }
 
@@ -725,7 +755,6 @@ exports.getAuditLogs = async (req, res, next) => {
     const [logs, total] = await Promise.all([
       AuditLog.find(filter)
         .populate('actor', 'name fullName email role')
-        .populate('actorId', 'name fullName email role')
         .sort({ timestamp: -1 })
         .skip(skip)
         .limit(limitNum)

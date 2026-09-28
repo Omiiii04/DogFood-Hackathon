@@ -359,4 +359,159 @@ describe('Admin Controller - POST /api/v1/admin/normalize-scores Endpoint', () =
       expect(res.body.data.total_scores_processed).toBe(1);
     });
   });
+
+  describe('GET /api/v1/admin/leaderboard Endpoint - Fallback & Algorithm Metadata Contract', () => {
+    const adminToken = jwt.sign(
+      { userId: dummyAdminId },
+      process.env.JWT_SECRET || 'raptors-offline-cryptographic-master-key-2026'
+    );
+
+    beforeEach(() => {
+      jest.spyOn(User, 'findById').mockImplementation((id) => {
+        const idStr = id.toString();
+        if (idStr === dummyAdminId.toString()) {
+          return {
+            select: jest.fn().mockResolvedValue({
+              _id: dummyAdminId,
+              role: 'admin',
+              name: 'Admin User',
+              email: 'admin@test.local',
+            }),
+          };
+        }
+        return { select: jest.fn().mockResolvedValue(null) };
+      });
+    });
+
+    it('should return leaderboard with isFallback = false and primary algorithm when primary cache is present', async () => {
+      const mockSub = {
+        _id: dummySub1,
+        title: 'Project Alpha',
+        track: 'Web',
+        team: { name: 'Alpha Team' },
+        status: 'submitted',
+      };
+      const mockScore = {
+        submissionId: dummySub1,
+        totalRawScore: 8.5,
+        normalizedScore: 88.0,
+        zScore: 1.1,
+      };
+
+      const mockQuery = {
+        populate: jest.fn().mockImplementation(() => mockQuery),
+        lean: jest.fn().mockResolvedValue([mockSub]),
+      };
+      jest.spyOn(Submission, 'find').mockReturnValue(mockQuery);
+      jest.spyOn(Score, 'find').mockReturnValue({
+        lean: jest.fn().mockResolvedValue([mockScore]),
+      });
+      jest.spyOn(LeaderboardCache, 'findOne').mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            algorithm: 'z_score_bayesian_shrinkage',
+            isFallback: false,
+            cachedAt: new Date('2026-09-28T12:00:00Z'),
+          }),
+        }),
+      });
+
+      await adminController.getLeaderboard(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            leaderboard: expect.arrayContaining([
+              expect.objectContaining({
+                id: dummySub1,
+                title: 'Project Alpha',
+                normalizedScore: 88.0,
+              }),
+            ]),
+            isFallback: false,
+            algorithm: 'z_score_bayesian_shrinkage',
+          }),
+        })
+      );
+    });
+
+    it('should return leaderboard with isFallback = true and fallback algorithm when fallback cache is active', async () => {
+      const mockSub = {
+        _id: dummySub1,
+        title: 'Project Alpha',
+        track: 'Web',
+        team: { name: 'Alpha Team' },
+        status: 'submitted',
+      };
+      const mockScore = {
+        submissionId: dummySub1,
+        totalRawScore: 8.5,
+        normalizedScore: 85.0,
+        zScore: 0,
+      };
+
+      const mockQuery = {
+        populate: jest.fn().mockImplementation(() => mockQuery),
+        lean: jest.fn().mockResolvedValue([mockSub]),
+      };
+      jest.spyOn(Submission, 'find').mockReturnValue(mockQuery);
+      jest.spyOn(Score, 'find').mockReturnValue({
+        lean: jest.fn().mockResolvedValue([mockScore]),
+      });
+      jest.spyOn(LeaderboardCache, 'findOne').mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            algorithm: 'raw_weighted_average_fallback',
+            isFallback: true,
+            cachedAt: new Date('2026-09-28T12:00:00Z'),
+          }),
+        }),
+      });
+
+      await adminController.getLeaderboard(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            leaderboard: expect.any(Array),
+            isFallback: true,
+            algorithm: 'raw_weighted_average_fallback',
+          }),
+        })
+      );
+    });
+
+    it('should return HTTP 200 with leaderboard, isFallback, and algorithm over GET route', async () => {
+      const mockQuery = {
+        populate: jest.fn().mockImplementation(() => mockQuery),
+        lean: jest.fn().mockResolvedValue([]),
+      };
+      jest.spyOn(Submission, 'find').mockReturnValue(mockQuery);
+      jest.spyOn(Score, 'find').mockReturnValue({
+        lean: jest.fn().mockResolvedValue([]),
+      });
+      jest.spyOn(LeaderboardCache, 'findOne').mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            algorithm: 'z_score_bayesian_shrinkage',
+            isFallback: false,
+          }),
+        }),
+      });
+
+      const res = await request(app)
+        .get('/api/v1/admin/leaderboard')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data.leaderboard)).toBe(true);
+      expect(res.body.data.isFallback).toBe(false);
+      expect(res.body.data.algorithm).toBe('z_score_bayesian_shrinkage');
+    });
+  });
 });

@@ -17,6 +17,7 @@ export const AdminDashboard = () => {
   const [stats, setStats]         = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [isFallback, setIsFallback]   = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
   const [allSubmissions, setAllSubmissions] = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -38,7 +39,12 @@ export const AdminDashboard = () => {
         api.get('/submissions/gallery', { params: { sort: 'newest' } }).catch(() => null),
       ]);
       if (statsRes?.success) setStats(statsRes.data);
-      if (lbRes?.success) setLeaderboard(lbRes.data.leaderboard);
+      if (lbRes?.success) {
+        setLeaderboard(lbRes.data.leaderboard);
+        if (lbRes.data.isFallback !== undefined) {
+          setIsFallback(Boolean(lbRes.data.isFallback));
+        }
+      }
       if (logsRes?.success) setAuditLogs(logsRes.data.logs);
       if (analyticsRes?.success) setAnalytics(analyticsRes.data);
       if (subsRes?.success) {
@@ -60,7 +66,20 @@ export const AdminDashboard = () => {
     try {
       const res = await api.post('/admin/normalize-scores');
       if (res.success) {
-        addNotification(`Normalized ${res.data.total_scores_processed} scores across ${res.data.total_submissions || 'projects'}!`, 'success');
+        const isDegradedFallback = Boolean(res.data?.is_fallback || res.data?.isFallback);
+        if (isDegradedFallback) {
+          setIsFallback(true);
+          addNotification(
+            `Notice: Judging microservice is unavailable. Standings computed using uncalibrated raw weighted-average fallback (${res.data.total_scores_processed} scores across ${res.data.total_submissions || 'projects'}). Re-run normalization once the service is restored to compute official Bayesian Z-score results.`,
+            'warning'
+          );
+        } else {
+          setIsFallback(false);
+          addNotification(
+            `Normalized ${res.data.total_scores_processed} scores across ${res.data.total_submissions || 'projects'} using official Bayesian Z-score normalization!`,
+            'success'
+          );
+        }
         fetchAdminData();
       }
     } catch (err) { addNotification(err.message, 'error'); }
@@ -356,6 +375,19 @@ export const AdminDashboard = () => {
             </div>
           </div>
         </div>
+        {isFallback && (
+          <div className="p-4 rounded-xl bg-status-warning/15 border border-status-warning/40 text-on-surface flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-status-warning shrink-0 mt-0.5" />
+            <div>
+              <div className="font-title-sm text-title-sm font-bold text-status-warning">
+                Uncalibrated Fallback Standings Active
+              </div>
+              <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+                These standings were computed using the uncalibrated raw weighted-average fallback because the judging microservice was unavailable. This fallback does not apply judge severity calibration or Bayesian Z-score shrinkage and is not equivalent to primary normalized judging. Please re-run normalization once the judging service is restored.
+              </p>
+            </div>
+          </div>
+        )}
         <LeaderboardTable data={filteredLeaderboard} />
       </div>
 
