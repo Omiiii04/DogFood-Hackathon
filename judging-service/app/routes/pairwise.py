@@ -8,7 +8,12 @@ from ..models.schemas import (
 from ..algorithms.pairwise import run_bradley_terry
 from ..algorithms.anomaly_detector import detect_voting_anomalies
 
+# Unmounted router retaining standalone/legacy anomaly route definition.
+# Intentionally not mounted in app.api.v1; tests explicitly verify /api/v1/detect-anomaly
+# is not exposed. The primary production voting anomaly endpoint is /api/v1/voting-anomalies.
 router = APIRouter(prefix="/api/v1", tags=["Pairwise & Anomaly"])
+
+# Production router mounted by app.api.v1 for Bradley-Terry pairwise ranking
 pairwise_router = APIRouter(tags=["Pairwise"])
 
 @pairwise_router.post("/pairwise-rank", response_model=PairwiseRankResponse)
