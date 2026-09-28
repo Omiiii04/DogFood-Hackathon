@@ -24,11 +24,10 @@ exports.getAssignedQueue = async (req, res, next) => {
     })
       .populate({
         path: 'submissionId',
-        populate: { path: 'teamId', select: 'name' },
-      })
-      .populate({
-        path: 'submission',
-        populate: { path: 'teamId', select: 'name' },
+        populate: [
+          { path: 'team', select: 'name' },
+          { path: 'teamId', select: 'name' },
+        ],
       })
       .sort({ status: 1, createdAt: 1 });
 
@@ -198,10 +197,8 @@ exports.submitScore = async (req, res, next) => {
     // Upsert score
     const score = await Score.findOneAndUpdate(
       {
-        $or: [
-          { judge: userId, submission: submissionId },
-          { judgeId: userId, submissionId: submissionId },
-        ],
+        judge: userId,
+        submission: submissionId,
       },
       {
         judge: userId,
@@ -332,10 +329,8 @@ exports.saveDraftScore = async (req, res, next) => {
       }
     } else {
       const existingScore = await Score.findOne({
-        $or: [
-          { judge: userId, submission: submissionId },
-          { judgeId: userId, submissionId: submissionId },
-        ],
+        judge: userId,
+        submission: submissionId,
       });
       if (existingScore && existingScore.rawCompositeScore != null) {
         rawCompositeScore = existingScore.rawCompositeScore;
@@ -361,10 +356,8 @@ exports.saveDraftScore = async (req, res, next) => {
 
     const score = await Score.findOneAndUpdate(
       {
-        $or: [
-          { judge: userId, submission: submissionId },
-          { judgeId: userId, submissionId: submissionId },
-        ],
+        judge: userId,
+        submission: submissionId,
       },
       updateDoc,
       { upsert: true, new: true, setDefaultsOnInsert: true }

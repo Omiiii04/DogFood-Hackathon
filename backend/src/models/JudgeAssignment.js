@@ -29,8 +29,25 @@ const JudgeAssignmentSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+// Virtual populate options for alias paths
+JudgeAssignmentSchema.virtual('judge', {
+  ref: 'User',
+  localField: 'judgeId',
+  foreignField: '_id',
+  justOne: true,
+});
+
+JudgeAssignmentSchema.virtual('submission', {
+  ref: 'Submission',
+  localField: 'submissionId',
+  foreignField: '_id',
+  justOne: true,
+});
 
 JudgeAssignmentSchema.pre('validate', function (next) {
   if (this.judge && !this.judgeId) this.judgeId = this.judge;

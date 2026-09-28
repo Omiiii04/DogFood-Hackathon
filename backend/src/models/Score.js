@@ -72,8 +72,85 @@ const ScoreSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+// Virtual populate options for alias paths
+ScoreSchema.virtual('judgeId', {
+  ref: 'User',
+  localField: 'judge',
+  foreignField: '_id',
+  justOne: true,
+});
+
+ScoreSchema.virtual('submissionId', {
+  ref: 'Submission',
+  localField: 'submission',
+  foreignField: '_id',
+  justOne: true,
+});
+
+// Transparent query and update mapping for legacy aliases
+ScoreSchema.pre(
+  ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'deleteMany', 'countDocuments', 'updateMany', 'updateOne'],
+  function () {
+    const filter = this.getQuery ? this.getQuery() : null;
+    if (filter) {
+      if (filter.submissionId && !filter.submission) {
+        filter.submission = filter.submissionId;
+        delete filter.submissionId;
+      }
+      if (filter.judgeId && !filter.judge) {
+        filter.judge = filter.judgeId;
+        delete filter.judgeId;
+      }
+      if (Array.isArray(filter.$or)) {
+        filter.$or = filter.$or.map((clause) => {
+          const mapped = { ...clause };
+          if (mapped.submissionId && !mapped.submission) {
+            mapped.submission = mapped.submissionId;
+            delete mapped.submissionId;
+          }
+          if (mapped.judgeId && !mapped.judge) {
+            mapped.judge = mapped.judgeId;
+            delete mapped.judgeId;
+          }
+          return mapped;
+        });
+        if (
+          filter.$or.length === 2 &&
+          JSON.stringify(filter.$or[0]) === JSON.stringify(filter.$or[1])
+        ) {
+          const clause = filter.$or[0];
+          delete filter.$or;
+          Object.assign(filter, clause);
+        }
+      }
+    }
+
+    const update = this.getUpdate ? this.getUpdate() : null;
+    if (update) {
+      if (update.submissionId && !update.submission) {
+        update.submission = update.submissionId;
+      }
+      if (update.judgeId && !update.judge) {
+        update.judge = update.judgeId;
+      }
+      if (update.totalRawScore != null && update.rawCompositeScore == null) {
+        update.rawCompositeScore = update.totalRawScore;
+      }
+      const options = this.getOptions ? this.getOptions() : null;
+      if (options && options.upsert) {
+        delete update.submissionId;
+        delete update.judgeId;
+        delete update.totalRawScore;
+      }
+    }
+  }
+);
+
 
 ScoreSchema.pre('validate', function () {
   if (this.judge && !this.judgeId) {

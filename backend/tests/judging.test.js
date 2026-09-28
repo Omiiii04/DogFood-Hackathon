@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { solveJudgeAssignments, hasConflict } = require('../src/services/assignmentSolver');
 const JudgeAssignment = require('../src/models/JudgeAssignment');
+const Score = require('../src/models/Score');
 
 describe('Judge Assignment Engine & Model Unit Tests', () => {
   describe('JudgeAssignment Model', () => {
@@ -35,6 +36,20 @@ describe('Judge Assignment Engine & Model Unit Tests', () => {
       });
       const validationError = invalidAssignment.validateSync();
       expect(validationError.errors.status).toBeDefined();
+    });
+
+    it('should configure virtual populate options for submission and judge aliases', () => {
+      const submissionVirtual = JudgeAssignment.schema.virtuals.submission;
+      expect(submissionVirtual).toBeDefined();
+      expect(submissionVirtual.options.ref).toBe('Submission');
+      expect(submissionVirtual.options.localField).toBe('submissionId');
+      expect(submissionVirtual.options.foreignField).toBe('_id');
+
+      const judgeVirtual = JudgeAssignment.schema.virtuals.judge;
+      expect(judgeVirtual).toBeDefined();
+      expect(judgeVirtual.options.ref).toBe('User');
+      expect(judgeVirtual.options.localField).toBe('judgeId');
+      expect(judgeVirtual.options.foreignField).toBe('_id');
     });
   });
 
@@ -210,4 +225,78 @@ describe('Judge Assignment Engine & Model Unit Tests', () => {
       );
     });
   });
+
+  describe('Score Model & Upsert Query Resolution', () => {
+    it('should configure virtual populate options for submissionId and judgeId aliases', () => {
+      const submissionVirtual = Score.schema.virtuals.submissionId;
+      expect(submissionVirtual).toBeDefined();
+      expect(submissionVirtual.options.ref).toBe('Submission');
+      expect(submissionVirtual.options.localField).toBe('submission');
+      expect(submissionVirtual.options.foreignField).toBe('_id');
+
+      const judgeVirtual = Score.schema.virtuals.judgeId;
+      expect(judgeVirtual).toBeDefined();
+      expect(judgeVirtual.options.ref).toBe('User');
+      expect(judgeVirtual.options.localField).toBe('judge');
+      expect(judgeVirtual.options.foreignField).toBe('_id');
+    });
+
+    it('should allow findOneAndUpdate with upsert and canonical fields without strict mode errors', () => {
+      const judgeId = new mongoose.Types.ObjectId();
+      const submissionId = new mongoose.Types.ObjectId();
+
+      const query = Score.findOneAndUpdate(
+        {
+          judge: judgeId,
+          submission: submissionId,
+        },
+        {
+          judge: judgeId,
+          submission: submissionId,
+          criteriaScores: [{ key: 'innovation', score: 9.0, weight: 1.0 }],
+          rawCompositeScore: 9.0,
+          totalRawScore: 9.0,
+          privateNotes: 'Pairwise Winner',
+          isFinal: true,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      expect(() => query.cast()).not.toThrow();
+    });
+
+    it('should normalize $or queries with legacy aliases in pre hooks without throwing strict mode errors', () => {
+      const judgeId = new mongoose.Types.ObjectId();
+      const submissionId = new mongoose.Types.ObjectId();
+
+      const query = Score.findOneAndUpdate(
+        {
+          $or: [
+            { judge: judgeId, submission: submissionId },
+            { judgeId: judgeId, submissionId: submissionId },
+          ],
+        },
+        {
+          judge: judgeId,
+          submission: submissionId,
+          judgeId: judgeId,
+          submissionId: submissionId,
+          rawCompositeScore: 9.0,
+          totalRawScore: 9.0,
+          isFinal: true,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      // Pre-hook executes when query is compiled / executed
+      // We manually invoke pre-hook logic to ensure filter normalization
+      const preHooks = Score.schema.s.hooks._pres.get('findOneAndUpdate') || [];
+      for (const hook of preHooks) {
+        hook.fn.call(query, () => {});
+      }
+
+      expect(() => query.cast()).not.toThrow();
+    });
+  });
 });
+

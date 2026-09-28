@@ -59,8 +59,8 @@ const SubmissionSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['draft', 'submitted'],
-        message: '{VALUE} is not a valid submission status (must be draft or submitted)',
+        values: ['draft', 'submitted', 'locked'],
+        message: '{VALUE} is not a valid submission status (must be draft, submitted, or locked)',
       },
       default: 'draft',
       index: true,
@@ -81,6 +81,14 @@ const SubmissionSchema = new mongoose.Schema(
     toObject: { virtuals: true },
   }
 );
+
+// Virtual populate options for alias teamId
+SubmissionSchema.virtual('teamId', {
+  ref: 'Team',
+  localField: 'team',
+  foreignField: '_id',
+  justOne: true,
+});
 
 // Full-text search index for public gallery
 SubmissionSchema.index({ title: 'text', tagline: 'text', track: 'text' });

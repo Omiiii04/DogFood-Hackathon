@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNotification } from '../context/NotificationContext';
 import { renderMarkdownToSafeHTML } from '../utils/markdownSanitizer';
@@ -28,54 +28,54 @@ export const SubmissionEditor = () => {
   const [thumbnailPath, setThumbnailPath] = useState('/uploads/default-thumbnail.webp');
   const [status, setStatus] = useState('draft');
 
-  useEffect(() => {
-    const fetchSubmission = async () => {
-      try {
-        const teamRes = await api.get('/teams/my-team');
-        if (!teamRes.data?.team) {
-          setHasTeam(false);
-          setLoading(false);
-          return;
-        }
+  const fetchSubmission = useCallback(async () => {
+    try {
+      const teamRes = await api.get('/teams/my-team');
+      if (!teamRes.data?.team) {
+        setHasTeam(false);
+        setLoading(false);
+        return;
+      }
 
-        setTrack(teamRes.data.team.track || '');
+      setTrack(teamRes.data.team.track || '');
 
-        const sub = teamRes.data.submission;
-        if (sub) {
-          setTitle(sub.title || '');
-          setTagline(sub.tagline || '');
-          setRepoUrl(sub.githubUrl || '');
-          setDemoUrl(sub.demoVideoUrl || '');
-          setMarkdown(sub.description || '');
-          setThumbnailPath(sub.thumbnailUrl || '/uploads/default-thumbnail.webp');
-          setStatus(sub.status || 'draft');
-          localStorage.removeItem(DRAFT_KEY);
-        } else {
-          const saved = localStorage.getItem(DRAFT_KEY);
-          if (saved) {
-            try {
-              const parsed = JSON.parse(saved);
-              setTitle(parsed.title || '');
-              setTagline(parsed.tagline || '');
-              setRepoUrl(parsed.repoUrl || '');
-              setDemoUrl(parsed.demoUrl || '');
-              setMarkdown(parsed.markdown || DEFAULT_MARKDOWN);
-            } catch {
-              setMarkdown(DEFAULT_MARKDOWN);
-            }
-          } else {
+      const sub = teamRes.data.submission;
+      if (sub) {
+        setTitle(sub.title || '');
+        setTagline(sub.tagline || '');
+        setRepoUrl(sub.githubUrl || '');
+        setDemoUrl(sub.demoVideoUrl || '');
+        setMarkdown(sub.description || '');
+        setThumbnailPath(sub.thumbnailUrl || '/uploads/default-thumbnail.webp');
+        setStatus(sub.status || 'draft');
+        localStorage.removeItem(DRAFT_KEY);
+      } else {
+        const saved = localStorage.getItem(DRAFT_KEY);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            setTitle(parsed.title || '');
+            setTagline(parsed.tagline || '');
+            setRepoUrl(parsed.repoUrl || '');
+            setDemoUrl(parsed.demoUrl || '');
+            setMarkdown(parsed.markdown || DEFAULT_MARKDOWN);
+          } catch {
             setMarkdown(DEFAULT_MARKDOWN);
           }
+        } else {
+          setMarkdown(DEFAULT_MARKDOWN);
         }
-      } catch (err) {
-        addNotification(err.message, 'error');
-      } finally {
-        setLoading(false);
       }
-    };
-
-    fetchSubmission();
+    } catch (err) {
+      addNotification(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
   }, [addNotification]);
+
+  useEffect(() => {
+    fetchSubmission();
+  }, [fetchSubmission]);
 
   useEffect(() => {
     if (status === 'submitted' || status === 'locked' || loading) return;
@@ -101,6 +101,8 @@ export const SubmissionEditor = () => {
       if (res.success) {
         addNotification('Draft saved successfully!', 'success');
         localStorage.removeItem(DRAFT_KEY);
+        // Re-fetch from server to sync status and any server-side changes
+        await fetchSubmission();
       }
     } catch (err) {
       addNotification(err.message, 'error');
@@ -150,9 +152,10 @@ export const SubmissionEditor = () => {
         ? await api.post(`/submissions/${submissionId}/finalize`)
         : await api.post('/submissions/finalize');
       if (res.success) {
-        setStatus('submitted');
         localStorage.removeItem(DRAFT_KEY);
         addNotification('Project finalized and locked for evaluation!', 'success');
+        // Re-fetch from server so the editor reflects the true locked state
+        await fetchSubmission();
       }
     } catch (err) {
       addNotification(err.message, 'error');
