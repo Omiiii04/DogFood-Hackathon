@@ -297,6 +297,70 @@ describe('Judge Assignment Engine & Model Unit Tests', () => {
 
       expect(() => query.cast()).not.toThrow();
     });
+
+    it('should validate autoEvaluated schema field and alias isAutoEvaluated on Score', () => {
+      const score = new Score({
+        judge: new mongoose.Types.ObjectId(),
+        submission: new mongoose.Types.ObjectId(),
+        rawCompositeScore: 5.0,
+        autoEvaluated: true,
+      });
+      expect(score.autoEvaluated).toBe(true);
+      expect(score.isAutoEvaluated).toBe(true);
+    });
+
+    it('should normalize nested $and and $or filters in pre hooks during auto-evaluate upserts', () => {
+      const judgeId = new mongoose.Types.ObjectId();
+      const submissionId = new mongoose.Types.ObjectId();
+
+      const query = Score.findOneAndUpdate(
+        {
+          $and: [
+            { $or: [{ judge: judgeId }, { judgeId: judgeId }] },
+            { $or: [{ submission: submissionId }, { submissionId: submissionId }] },
+          ],
+        },
+        {
+          judge: judgeId,
+          submission: submissionId,
+          rawCompositeScore: 5.0,
+          totalRawScore: 5.0,
+          autoEvaluated: true,
+          isFinal: true,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      const preHooks = Score.schema.s.hooks._pres.get('findOneAndUpdate') || [];
+      for (const hook of preHooks) {
+        hook.fn.call(query, () => {});
+      }
+
+      expect(() => query.cast()).not.toThrow();
+    });
+  });
+
+  describe('JudgeAssignment autoEvaluated field', () => {
+    it('should support autoEvaluated boolean on JudgeAssignment model with default false', () => {
+      const assignment = new JudgeAssignment({
+        judgeId: new mongoose.Types.ObjectId(),
+        submissionId: new mongoose.Types.ObjectId(),
+        track: 'AI/ML',
+      });
+      expect(assignment.autoEvaluated).toBe(false);
+
+      const autoAssignment = new JudgeAssignment({
+        judgeId: new mongoose.Types.ObjectId(),
+        submissionId: new mongoose.Types.ObjectId(),
+        track: 'AI/ML',
+        autoEvaluated: true,
+        status: 'auto_evaluated',
+      });
+      expect(autoAssignment.autoEvaluated).toBe(true);
+      expect(autoAssignment.status).toBe('auto_evaluated');
+      const err = autoAssignment.validateSync();
+      expect(err).toBeUndefined();
+    });
   });
 });
 

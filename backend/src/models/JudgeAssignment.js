@@ -22,9 +22,15 @@ const JudgeAssignmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['assigned', 'in_progress', 'completed', 'pending'],
+      enum: ['assigned', 'in_progress', 'completed', 'pending', 'auto_evaluated'],
       default: 'assigned',
       index: true,
+    },
+    autoEvaluated: {
+      type: Boolean,
+      default: false,
+      index: true,
+      alias: 'isAutoEvaluated',
     },
   },
   {
@@ -50,32 +56,43 @@ JudgeAssignmentSchema.virtual('submission', {
 });
 
 JudgeAssignmentSchema.pre(
-  ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'deleteMany', 'countDocuments'],
+  ['find', 'findOne', 'findOneAndUpdate', 'findOneAndDelete', 'deleteMany', 'countDocuments', 'updateMany', 'updateOne'],
   function () {
     const filter = this.getQuery ? this.getQuery() : null;
     if (filter) {
-      if (filter.judge !== undefined && filter.judgeId === undefined) {
-        filter.judgeId = filter.judge;
-        delete filter.judge;
-      }
-      if (filter.submission !== undefined && filter.submissionId === undefined) {
-        filter.submissionId = filter.submission;
-        delete filter.submission;
-      }
-      if (Array.isArray(filter.$or)) {
-        filter.$or = filter.$or.map((clause) => {
-          const mapped = { ...clause };
-          if (mapped.judge !== undefined && mapped.judgeId === undefined) {
-            mapped.judgeId = mapped.judge;
-            delete mapped.judge;
+      const normalizeClause = (clause) => {
+        if (!clause || typeof clause !== 'object') return clause;
+        if (clause.judge !== undefined && clause.judgeId === undefined) {
+          clause.judgeId = clause.judge;
+          delete clause.judge;
+        }
+        if (clause.submission !== undefined && clause.submissionId === undefined) {
+          clause.submissionId = clause.submission;
+          delete clause.submission;
+        }
+        if (Array.isArray(clause.$or)) {
+          clause.$or = clause.$or.map(normalizeClause);
+          if (
+            clause.$or.length === 2 &&
+            JSON.stringify(clause.$or[0]) === JSON.stringify(clause.$or[1])
+          ) {
+            const first = clause.$or[0];
+            delete clause.$or;
+            Object.assign(clause, first);
           }
-          if (mapped.submission !== undefined && mapped.submissionId === undefined) {
-            mapped.submissionId = mapped.submission;
-            delete mapped.submission;
+        }
+        if (Array.isArray(clause.$and)) {
+          clause.$and = clause.$and.map(normalizeClause);
+          const canFlatten = clause.$and.every((c) => !c.$or && !c.$and);
+          if (canFlatten) {
+            clause.$and.forEach((c) => Object.assign(clause, c));
+            delete clause.$and;
           }
-          return mapped;
-        });
-      }
+        }
+        return clause;
+      };
+
+      normalizeClause(filter);
     }
   }
 );

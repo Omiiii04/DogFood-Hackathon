@@ -74,6 +74,12 @@ const SubmissionSchema = new mongoose.Schema(
       default: 0,
       index: true,
     },
+    autoEvaluated: {
+      type: Boolean,
+      default: false,
+      index: true,
+      alias: 'isAutoEvaluated',
+    },
   },
   {
     timestamps: true,

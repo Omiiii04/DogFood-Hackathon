@@ -93,6 +93,7 @@ exports.getAssignedQueue = async (req, res, next) => {
           assignmentId: sub._id,
           track: sub.track,
           status: score?.isFinal ? 'completed' : 'assigned',
+          autoEvaluated: score?.autoEvaluated || false,
           submission: sub,
           score,
         };
@@ -140,7 +141,8 @@ exports.getAssignedQueue = async (req, res, next) => {
         return {
           assignmentId: assignment._id,
           track: assignment.track,
-          status: assignment.status,
+          status: score?.isFinal ? 'completed' : assignment.status,
+          autoEvaluated: assignment.autoEvaluated || score?.autoEvaluated || false,
           submission: sub,
           score,
         };
@@ -640,13 +642,46 @@ exports.autoEvaluateQueue = async (req, res, next) => {
     // Default auto-eval score: median (5.0) — valid 0.5-step value
     const AUTO_SCORE = 5.0;
 
-    // Find all pending/assigned queue items for this judge
-    const assignments = await JudgeAssignment.find({
-      $or: [{ judgeId: userId }, { judge: userId }],
-      status: { $nin: ['completed'] },
-    }).populate({ path: 'submissionId', select: 'title track status' });
+    const isOrganizerOrAdmin = ['organizer', 'admin'].includes(req.user?.role);
 
-    if (!assignments.length) {
+    // If judge has no assignments, try to auto-assign submitted projects first (same as getAssignedQueue)
+    if (!isOrganizerOrAdmin && req.user?.role === 'judge') {
+      const existingCount = await JudgeAssignment.countDocuments({
+        $or: [{ judgeId: userId }, { judge: userId }],
+      });
+      if (existingCount === 0) {
+        try {
+          const { autoAssignSubmission } = require('../services/assignmentSolver');
+          const submittedSubs = await Submission.find({ status: { $in: ['submitted', 'locked'] } });
+          for (const sub of submittedSubs) {
+            await autoAssignSubmission(sub);
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Collect submissions to evaluate
+    let targetItems = []; // Array of { subId, assignmentId }
+
+    if (isOrganizerOrAdmin) {
+      const allSubs = await Submission.find({ status: { $in: ['submitted', 'locked'] } });
+      targetItems = allSubs.map((s) => ({ subId: s._id, assignmentId: null }));
+    } else {
+      const assignments = await JudgeAssignment.find({
+        $or: [{ judgeId: userId }, { judge: userId }],
+        status: { $nin: ['completed', 'auto_evaluated'] },
+      }).populate({ path: 'submissionId', select: 'title track status' });
+
+      assignments.forEach((a) => {
+        const sub = a.submissionId || a.submission;
+        if (sub) {
+          const subId = sub._id || sub;
+          targetItems.push({ subId, assignmentId: a._id });
+        }
+      });
+    }
+
+    if (!targetItems.length) {
       return res.status(200).json({
         success: true,
         message: 'No pending assignments to evaluate.',
@@ -658,18 +693,15 @@ exports.autoEvaluateQueue = async (req, res, next) => {
     let skipped = 0;
     const ipHash = crypto.createHash('sha256').update(req.ip || '127.0.0.1').digest('hex');
 
-    for (const assignment of assignments) {
-      const sub = assignment.submissionId || assignment.submission;
-      if (!sub) { skipped++; continue; }
-      const subId = sub._id || sub;
+    for (const item of targetItems) {
+      const subId = item.subId;
+      if (!subId) { skipped++; continue; }
 
-      // Skip if already has a final score
+      // Skip if already has a final score by this judge
       const existing = await Score.findOne({
-        $and: [
-          { $or: [{ judge: userId }, { judgeId: userId }] },
-          { $or: [{ submission: subId }, { submissionId: subId }] },
-          { isFinal: true },
-        ],
+        judge: userId,
+        submission: subId,
+        isFinal: true,
       });
       if (existing) { skipped++; continue; }
 
@@ -696,9 +728,9 @@ exports.autoEvaluateQueue = async (req, res, next) => {
         ).toFixed(3)
       );
 
-      // Upsert score
+      // Upsert score with autoEvaluated: true using canonical fields
       await Score.findOneAndUpdate(
-        { $and: [{ $or: [{ judge: userId }, { judgeId: userId }] }, { $or: [{ submission: subId }, { submissionId: subId }] }] },
+        { judge: userId, submission: subId },
         {
           judge: userId,
           judgeId: userId,
@@ -709,12 +741,28 @@ exports.autoEvaluateQueue = async (req, res, next) => {
           totalRawScore: rawCompositeScore,
           privateNotes: '[Auto-evaluated by judging engine]',
           isFinal: true,
+          autoEvaluated: true,
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
 
-      // Mark assignment completed
-      await JudgeAssignment.findByIdAndUpdate(assignment._id, { status: 'completed' });
+      // Mark assignment completed and autoEvaluated
+      if (item.assignmentId) {
+        await JudgeAssignment.findByIdAndUpdate(item.assignmentId, {
+          status: 'completed',
+          autoEvaluated: true,
+        });
+      } else {
+        await JudgeAssignment.updateMany(
+          {
+            $and: [
+              { $or: [{ judgeId: userId }, { judge: userId }] },
+              { $or: [{ submissionId: subId }, { submission: subId }] },
+            ],
+          },
+          { status: 'completed', autoEvaluated: true }
+        );
+      }
 
       // Audit log
       await AuditLog.create({

@@ -135,8 +135,13 @@ export const JudgePortal = () => {
   const currentTotal = computeTotalWeightedScore();
 
   const statusInfo = (item) => {
-    if (item.status === 'completed') return { icon: <CheckCircle className="w-3.5 h-3.5" />, label: 'Scored',     cls: 'text-status-success' };
-    if (item.status === 'in_progress') return { icon: <Clock className="w-3.5 h-3.5" />,       label: 'In Progress', cls: 'text-primary' };
+    if (item.status === 'completed' || item.score?.isFinal) {
+      if (item.autoEvaluated || item.score?.autoEvaluated) {
+        return { icon: <CheckCircle className="w-3.5 h-3.5" />, label: 'Auto Scored', cls: 'text-secondary' };
+      }
+      return { icon: <CheckCircle className="w-3.5 h-3.5" />, label: 'Scored', cls: 'text-status-success' };
+    }
+    if (item.status === 'in_progress') return { icon: <Clock className="w-3.5 h-3.5" />, label: 'In Progress', cls: 'text-primary' };
     return { icon: <Clock className="w-3.5 h-3.5" />, label: 'Pending', cls: 'text-status-warning' };
   };
 

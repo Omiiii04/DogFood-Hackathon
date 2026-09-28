@@ -69,6 +69,12 @@ const ScoreSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    autoEvaluated: {
+      type: Boolean,
+      default: false,
+      index: true,
+      alias: 'isAutoEvaluated',
+    },
   },
   {
     timestamps: true,
@@ -98,36 +104,39 @@ ScoreSchema.pre(
   function () {
     const filter = this.getQuery ? this.getQuery() : null;
     if (filter) {
-      if (filter.submissionId && !filter.submission) {
-        filter.submission = filter.submissionId;
-        delete filter.submissionId;
-      }
-      if (filter.judgeId && !filter.judge) {
-        filter.judge = filter.judgeId;
-        delete filter.judgeId;
-      }
-      if (Array.isArray(filter.$or)) {
-        filter.$or = filter.$or.map((clause) => {
-          const mapped = { ...clause };
-          if (mapped.submissionId && !mapped.submission) {
-            mapped.submission = mapped.submissionId;
-            delete mapped.submissionId;
-          }
-          if (mapped.judgeId && !mapped.judge) {
-            mapped.judge = mapped.judgeId;
-            delete mapped.judgeId;
-          }
-          return mapped;
-        });
-        if (
-          filter.$or.length === 2 &&
-          JSON.stringify(filter.$or[0]) === JSON.stringify(filter.$or[1])
-        ) {
-          const clause = filter.$or[0];
-          delete filter.$or;
-          Object.assign(filter, clause);
+      const normalizeClause = (clause) => {
+        if (!clause || typeof clause !== 'object') return clause;
+        if (clause.submissionId !== undefined && clause.submission === undefined) {
+          clause.submission = clause.submissionId;
+          delete clause.submissionId;
         }
-      }
+        if (clause.judgeId !== undefined && clause.judge === undefined) {
+          clause.judge = clause.judgeId;
+          delete clause.judgeId;
+        }
+        if (Array.isArray(clause.$or)) {
+          clause.$or = clause.$or.map(normalizeClause);
+          if (
+            clause.$or.length === 2 &&
+            JSON.stringify(clause.$or[0]) === JSON.stringify(clause.$or[1])
+          ) {
+            const first = clause.$or[0];
+            delete clause.$or;
+            Object.assign(clause, first);
+          }
+        }
+        if (Array.isArray(clause.$and)) {
+          clause.$and = clause.$and.map(normalizeClause);
+          const canFlatten = clause.$and.every((c) => !c.$or && !c.$and);
+          if (canFlatten) {
+            clause.$and.forEach((c) => Object.assign(clause, c));
+            delete clause.$and;
+          }
+        }
+        return clause;
+      };
+
+      normalizeClause(filter);
     }
 
     const update = this.getUpdate ? this.getUpdate() : null;
