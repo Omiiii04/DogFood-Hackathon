@@ -48,9 +48,21 @@ export const Navbar = () => {
           </div>
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-5 xl:gap-7 shrink-0">
+        <nav className="hidden lg:flex items-center gap-5 xl:gap-6 shrink-0">
           <Link to="/gallery" className={navLinkClass('/gallery')}>
+            Explore Hackathons
+          </Link>
+          <Link to="/gallery" className={navLinkClass('/gallery-showcase')}>
             Showcase Gallery
+          </Link>
+          <Link to="/" className={navLinkClass('/tracks')}>
+            Tracks & Prizes
+          </Link>
+          <Link to="/" className={navLinkClass('/leaderboard')}>
+            Leaderboard
+          </Link>
+          <Link to="/" className={navLinkClass('/faq')}>
+            FAQ
           </Link>
 
           {user && user.role === 'participant' && (
@@ -124,7 +136,19 @@ export const Navbar = () => {
       {mobileOpen && (
         <div className="lg:hidden border-t border-surface-container bg-surface-container-lowest px-4 pt-3 pb-4 flex flex-col space-y-1 shadow-md">
           <Link to="/gallery" className={mobileNavLinkClass('/gallery')}>
+            Explore Hackathons
+          </Link>
+          <Link to="/gallery" className={mobileNavLinkClass('/gallery-showcase')}>
             Showcase Gallery
+          </Link>
+          <Link to="/" className={mobileNavLinkClass('/tracks')}>
+            Tracks & Prizes
+          </Link>
+          <Link to="/" className={mobileNavLinkClass('/leaderboard')}>
+            Leaderboard
+          </Link>
+          <Link to="/" className={mobileNavLinkClass('/faq')}>
+            FAQ
           </Link>
 
           {user && user.role === 'participant' && (
