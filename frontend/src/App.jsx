@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Navbar } from './components/Navbar';
@@ -20,9 +20,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <NotificationProvider>
-          <div className="min-h-screen flex flex-col bg-canvas text-gray-100 font-sans selection:bg-blue-600 selection:text-white">
+          <div className="min-h-screen flex flex-col bg-background text-on-surface">
             <Navbar />
-            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8">
+            <main className="flex-1 w-full flex flex-col">
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/gallery" element={<Gallery />} />
@@ -69,12 +69,49 @@ function App() {
               </Routes>
             </main>
 
-            <footer className="border-t border-border-subtle bg-surface/50 py-6 mt-16 text-center text-xs text-gray-500">
-              <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-                <span>Dogfood 2026 • Hackathon Raptors Air-Gapped Platform</span>
-                <span className="font-mono text-[11px] text-gray-400">
-                  Containerized Local Deployment (Node 20 • FastAPI • Mongo 7 • React 18)
-                </span>
+            <footer className="w-full bg-surface-container-lowest border-t border-surface-container mt-space-xl">
+              <div className="max-w-[1280px] mx-auto px-margin-mobile md:px-margin py-12 lg:py-16">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-gutter mb-12">
+                  <div className="lg:col-span-2 flex flex-col gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-on-primary"><span className="material-symbols-outlined text-[20px]">military_tech</span></div>
+                      <span className="font-headline-sm text-headline-sm text-on-surface tracking-tight font-bold">DOGFOOD 2026</span>
+                    </div>
+                    <p className="font-body-md text-body-md text-on-surface-variant max-w-sm">The premier air-gapped collegiate competitive engineering sprint hosted by Hackathon Raptors. Fueling real-world product acceleration and fair automated evaluation.</p>
+                    <div className="flex items-center gap-2 pt-2">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-caps text-label-caps"><span className="material-symbols-outlined text-[14px] text-primary">verified</span>Air-Gapped Scoring Active</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <span className="font-title-md text-title-md text-on-surface font-bold">Competitions</span>
+                    <Link to="/gallery" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Explore Hackathons</Link>
+                    <Link to="/gallery" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Tracks & Bounties</Link>
+                    <Link to="/gallery" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Live Leaderboard</Link>
+                    <Link to="/gallery" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Submissions Showcase</Link>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <span className="font-title-md text-title-md text-on-surface font-bold">Resources</span>
+                    <Link to="/" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Submission Rules</Link>
+                    <Link to="/" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Air-Gap SDK Specs</Link>
+                    <Link to="/" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Mentor Directory</Link>
+                    <Link to="/" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Platform FAQ</Link>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <span className="font-title-md text-title-md text-on-surface font-bold">Community & Trust</span>
+                    <Link to="/" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Hackathon Raptors Guild</Link>
+                    <Link to="/" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Code of Conduct</Link>
+                    <Link to="/" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Fair Play & Integrity</Link>
+                    <Link to="/" className="font-body-md text-body-md text-on-surface-variant hover:text-on-surface transition-colors">Contact Organizers</Link>
+                  </div>
+                </div>
+                <div className="pt-8 border-t border-surface-container flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <p className="font-body-sm text-body-sm text-outline">© 2026 Hackathon Raptors Platform. Built for DOGFOOD 2026. All rights reserved.</p>
+                  <div className="flex items-center gap-6">
+                    <Link to="/" className="font-body-sm text-body-sm text-outline hover:text-on-surface transition-colors">Privacy Policy</Link>
+                    <Link to="/" className="font-body-sm text-body-sm text-outline hover:text-on-surface transition-colors">Terms of Service</Link>
+                    <Link to="/" className="font-body-sm text-body-sm text-outline hover:text-on-surface transition-colors">Security Guidelines</Link>
+                  </div>
+                </div>
               </div>
             </footer>
           </div>
