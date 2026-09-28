@@ -16,3 +16,13 @@ def test_anomaly_normal_traffic():
     response = detect_voting_anomalies("sub_normal", timestamps, window_seconds=60.0, velocity_threshold=15)
     assert response.is_anomalous is False
     assert response.peak_velocity <= 2
+
+
+def test_anomaly_periodicity_entropy():
+    # 15 votes spaced with identical 10.0s intervals (len(intervals) > 10, entropy = 0.0)
+    timestamps = [1000.0 + (i * 10.0) for i in range(15)]
+
+    response = detect_voting_anomalies("sub_periodic", timestamps, window_seconds=60.0, velocity_threshold=15)
+    assert response.is_anomalous is True
+    assert response.entropy == 0.0
+    assert "requires organizer review" in response.message

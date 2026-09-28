@@ -30,6 +30,7 @@ runtime = "node20"
 [services.judging_service]
 container = "dogfood-judging"
 port = 8000
+# Metadata: internal-only in Compose topology because no host port is mapped
 internal_only = true
 healthcheck = "http://judging-service:8000/health"
 type = "microservice"
@@ -38,6 +39,8 @@ runtime = "python3.11"
 [services.database]
 container = "dogfood-mongodb"
 port = 27017
+# Metadata: internal-only in Compose topology because no host port is mapped
+internal_only = true
 engine = "mongodb-7.0"
 database = "dogfood"
 
@@ -66,6 +69,7 @@ endpoints = [
   "POST /api/v1/admin/assign-judges",
   "POST /api/v1/admin/normalize-scores",
   "GET /api/v1/admin/leaderboard",
+  "GET /api/v1/submissions/leaderboard",
   "GET /api/v1/admin/export/csv"
 ]
 
@@ -81,6 +85,7 @@ endpoints = [
 name = "Tier 4: Bradley-Terry Pairwise Preference Ranking"
 status = "complete"
 endpoints = [
+  "POST /api/v1/judging/pairwise",
   "POST /api/v1/pairwise-rank"
 ]
 

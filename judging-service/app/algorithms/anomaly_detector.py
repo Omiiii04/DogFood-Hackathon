@@ -131,6 +131,12 @@ def detect_voting_anomalies(
     window_seconds: float = 60.0,
     velocity_threshold: int = 15
 ) -> AnomalyDetectionResponse:
+    """Single-submission velocity burst and inter-arrival periodicity analyzer.
+
+    Note: This is a standalone algorithm utility (tested directly in test_anomaly.py)
+    providing a statistical review signal. It is not mounted as a public API route;
+    the production tournament-wide voting anomaly endpoint is /api/v1/voting-anomalies.
+    """
     if not timestamps or len(timestamps) < 2:
         return AnomalyDetectionResponse(
             submission_id=submission_id,
@@ -174,7 +180,7 @@ def detect_voting_anomalies(
     if is_velocity_anomalous:
         msg = f"Alert: Rapid velocity spike detected ({peak_velocity} votes within {int(window_seconds)}s)."
     elif is_entropy_anomalous:
-        msg = "Alert: Unnatural timestamp periodicity detected (possible bot attack)."
+        msg = "Alert: Unnatural timestamp periodicity detected (low inter-arrival entropy; requires organizer review)."
     else:
         msg = "Voting velocity pattern is normal."
 
