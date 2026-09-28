@@ -3,80 +3,105 @@ import { ExternalLink, Github } from 'lucide-react';
 import { getTrackBadgeColor } from '../utils/formatters';
 import { UpvoteWidget } from './UpvoteWidget';
 
-const THUMBNAIL_FALLBACK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='176'%3E%3Crect width='600' height='176' fill='%230f172a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%234b5563' font-size='12' font-family='monospace'%3ENo Preview%3C/text%3E%3C/svg%3E";
+/* Track-specific thumbnail fallbacks */
+const TRACK_THUMBNAILS = {
+  'AI/ML':             '/thumbnails/thumb_aiml.jpg',
+  'Web3 & Blockchain': '/thumbnails/thumb_web3.jpg',
+  'FinTech':           '/thumbnails/thumb_fintech.jpg',
+  'HealthTech':        '/thumbnails/thumb_healthtech.jpg',
+};
+
+// Ignore the generic server placeholder; use track-specific images instead
+const IGNORED_URLS = ['/uploads/default-thumbnail.webp', '', null, undefined];
+
+const getThumbnail = (track, url) => {
+  if (url && !IGNORED_URLS.includes(url)) return url;
+  return TRACK_THUMBNAILS[track] || '/thumbnails/thumb_default.jpg';
+};
 
 export const ProjectCard = ({ submission, onOpenModal }) => {
   return (
     <div
       onClick={() => onOpenModal && onOpenModal(submission)}
-      className="group relative bg-surface border border-border-subtle rounded-xl overflow-hidden hover:border-blue-500/50 hover:shadow-card transition-all duration-300 flex flex-col cursor-pointer"
+      className="group relative flex flex-col rounded-2xl overflow-hidden cursor-pointer
+                 bg-[#0d1424] border border-[#1e2d4a]
+                 hover:border-blue-500/60 hover:shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_8px_32px_rgba(0,0,0,0.5)]
+                 transition-all duration-300"
     >
-      <div className="relative h-44 w-full bg-surface-raised overflow-hidden">
+      {/* ── Thumbnail ──────────────────────────────────────────────── */}
+      <div className="relative h-48 w-full overflow-hidden bg-[#0a1120]">
         <img
-          src={submission.thumbnailUrl || '/uploads/default-thumbnail.webp'}
+          src={getThumbnail(submission.track, submission.thumbnailUrl)}
           alt={submission.title}
           onError={(e) => {
             e.target.onerror = null;
-            e.target.src = THUMBNAIL_FALLBACK;
+            // Fall back to track-specific image on load error
+            e.target.src = TRACK_THUMBNAILS[submission.track] || '/thumbnails/thumb_default.jpg';
           }}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500 opacity-90"
         />
-        <div className="absolute top-3 left-3">
+        {/* bottom gradient so text is always readable */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0d1424]/90 via-transparent to-transparent" />
+
+        {/* Track badge */}
+        <div className="absolute top-3 left-3 z-10">
           <span
-            className={`inline-block px-2.5 py-1 rounded-md text-xs font-semibold border backdrop-blur-md ${getTrackBadgeColor(
-              submission.track
-            )}`}
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold border backdrop-blur-md
+                        shadow-[0_2px_8px_rgba(0,0,0,0.4)] ${getTrackBadgeColor(submission.track)}`}
           >
             {submission.track}
           </span>
         </div>
       </div>
 
-      <div className="p-5 flex-1 flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <h3 className="font-bold text-lg text-white group-hover:text-blue-400 transition-colors line-clamp-1">
-              {submission.title}
-            </h3>
-          </div>
-          <p className="text-xs font-medium text-gray-400 mb-2">
-            by <span className="text-gray-200">{submission.teamId?.name || submission.team?.name || '—'}</span>
-          </p>
-          <p className="text-sm text-gray-300 line-clamp-2 mb-4 leading-relaxed">
-            {submission.tagline}
-          </p>
+      {/* ── Body ───────────────────────────────────────────────────── */}
+      <div className="flex flex-col flex-1 p-5 gap-2">
+        <h3 className="font-bold text-[1.05rem] leading-snug text-blue-300 group-hover:text-blue-200 transition-colors line-clamp-2">
+          {submission.title}
+        </h3>
+
+        <p className="text-[11px] font-medium text-slate-500">
+          by{' '}
+          <span className="text-slate-400">
+            {submission.teamId?.name || submission.team?.name || '—'}
+          </span>
+        </p>
+
+        <p className="text-[13px] text-slate-400 line-clamp-2 leading-relaxed mt-0.5">
+          {submission.tagline}
+        </p>
+      </div>
+
+      {/* ── Footer ─────────────────────────────────────────────────── */}
+      <div className="px-5 pb-4 flex items-center justify-between border-t border-[#1e2d4a] pt-3">
+        <div className="flex items-center gap-1.5">
+          {submission.githubUrl && (
+            <a
+              href={submission.githubUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+              title="View Repository"
+            >
+              <Github className="w-4 h-4" />
+            </a>
+          )}
+          {submission.demoVideoUrl && (
+            <a
+              href={submission.demoVideoUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+              title="Live Demo"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          )}
         </div>
 
-        <div className="pt-3 border-t border-border-subtle flex items-center justify-between text-xs text-gray-400">
-          <div className="flex items-center space-x-2">
-            {submission.githubUrl && (
-              <a
-                href={submission.githubUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="p-1.5 rounded-lg hover:bg-surface-raised hover:text-white transition-colors"
-                title="View Code Repository"
-              >
-                <Github className="w-4 h-4" />
-              </a>
-            )}
-            {submission.demoVideoUrl && (
-              <a
-                href={submission.demoVideoUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="p-1.5 rounded-lg hover:bg-surface-raised hover:text-white transition-colors"
-                title="Live Demo"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            )}
-          </div>
-
-          <UpvoteWidget submission={submission} size="sm" />
-        </div>
+        <UpvoteWidget submission={submission} size="sm" />
       </div>
     </div>
   );

@@ -1,92 +1,50 @@
+/* ─── Google Fonts (Plus Jakarta Sans & Space Grotesk) ─────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/inter-regular.woff2') format('woff2');
-}
+/* ─── Custom Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c3c5d9; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #737687; }
 
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/inter-semibold.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/jetbrains-mono.woff2') format('woff2');
-}
-
-:root {
-  --bg-canvas: #0B0F17;
-  --bg-surface: #111827;
-  --bg-surface-raised: #1F2937;
-  --border-subtle: #374151;
-  --accent-primary: #3B82F6;
-  --accent-hover: #2563EB;
-  --status-success: #10B981;
-  --status-warning: #F59E0B;
-  --status-danger: #EF4444;
-}
-
+/* ─── Base Body ─────────────────────────────────────────────────────── */
 body {
   margin: 0;
+  background-color: #f8f9ff;
+  color: #0b1c30;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #0B0F17;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #1F2937;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #374151;
-}
-
+/* ─── Range Sliders (light theme) ──────────────────────────────────── */
 input[type=range] {
   -webkit-appearance: none;
-  background: #1F2937;
+  background: #e5eeff;
   border-radius: 9999px;
-  height: 8px;
+  height: 6px;
 }
-
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  height: 20px;
-  width: 20px;
+  height: 18px;
+  width: 18px;
   border-radius: 50%;
-  background: #3B82F6;
+  background: #1e60ff;
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
-  transition: transform 0.1s ease;
+  box-shadow: 0 0 0 3px rgba(30, 96, 255, 0.18);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-
 input[type=range]::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-  background: #60A5FA;
+  transform: scale(1.18);
+  box-shadow: 0 0 0 5px rgba(30, 96, 255, 0.22);
 }
 
+/* ─── Confetti Animation ────────────────────────────────────────────── */
 @keyframes confetti-fall {
-  0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+  0%   { transform: translateY(-10vh) rotate(0deg);   opacity: 1; }
   100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
 }
 .animate-confetti-fall {
@@ -95,18 +53,81 @@ input[type=range]::-webkit-slider-thumb:hover {
   animation-iteration-count: infinite;
 }
 
+/* ─── Podium Animation ──────────────────────────────────────────────── */
 @keyframes podium-up {
   from { transform: translateY(100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
-.animate-podium-up {
-  animation: podium-up 1s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
+.animate-podium-up { animation: podium-up 1s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* ─── Ticker Animation ──────────────────────────────────────────────── */
 @keyframes ticker {
-  0% { transform: translateX(0); }
+  0%   { transform: translateX(0);    }
   100% { transform: translateX(-50%); }
 }
-.animate-ticker {
-  animation: ticker 30s linear infinite;
+.animate-ticker { animation: ticker 30s linear infinite; }
+
+/* ─── Shimmer / Skeleton Loading ────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #e5eeff 25%, #eff4ff 50%, #e5eeff 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* ─── Fade-in Up ────────────────────────────────────────────────────── */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.animate-fade-in-up { animation: fade-in-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* ─── Scale In ──────────────────────────────────────────────────────── */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+.animate-scale-in { animation: scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* ─── Glassmorphism Card ────────────────────────────────────────────── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(195, 197, 217, 0.55);
+  box-shadow: 0 4px 28px rgba(0, 72, 212, 0.07);
+}
+
+/* ─── Prose Overrides for Light Theme ──────────────────────────────── */
+.prose-stitch h1, .prose-stitch h2, .prose-stitch h3,
+.prose-stitch h4, .prose-stitch h5, .prose-stitch h6 { color: #0b1c30; margin-bottom: 0.5rem; }
+.prose-stitch p, .prose-stitch li { color: #434656; line-height: 1.75; }
+.prose-stitch a { color: #1e60ff; text-decoration: underline; }
+.prose-stitch strong { color: #0b1c30; }
+.prose-stitch code {
+  background: #e5eeff;
+  color: #0048d4;
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 0.85em;
+  font-family: 'Space Grotesk', monospace;
+}
+.prose-stitch pre {
+  background: #eff4ff;
+  border: 1px solid #c3c5d9;
+  border-radius: 12px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+.prose-stitch blockquote {
+  border-left: 3px solid #1e60ff;
+  color: #434656;
+  background: #eff4ff;
+  padding: 0.5rem 1rem;
+  border-radius: 0 8px 8px 0;
+  margin: 1rem 0;
 }

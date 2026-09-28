@@ -16,9 +16,19 @@ export const useSubmissions = (selectedTrack = 'All', searchQuery = '', sortBy =
       if (sortBy) params.sort = sortBy;
 
       const res = await api.get('/submissions/gallery', { params });
-      if (res.success) {
-        setSubmissions(res.data.submissions);
+
+      // Handle both { success, data: { submissions } } and direct array shapes
+      let fetched = [];
+      if (res && res.success && res.data) {
+        fetched = Array.isArray(res.data.submissions)
+          ? res.data.submissions
+          : Array.isArray(res.data)
+          ? res.data
+          : [];
+      } else if (Array.isArray(res)) {
+        fetched = res;
       }
+      setSubmissions(fetched);
     } catch (err) {
       setError(err.message);
     } finally {

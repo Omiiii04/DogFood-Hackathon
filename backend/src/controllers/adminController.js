@@ -122,6 +122,9 @@ exports.assignJudges = async (req, res, next) => {
 
 exports.getAssignments = async (req, res, next) => {
   try {
+    const { ensureSubmissionsAssigned } = require('../services/assignmentSolver');
+    await ensureSubmissionsAssigned().catch(() => {});
+
     const assignments = await JudgeAssignment.find()
       .populate('judgeId', 'fullName email')
       .populate('submissionId', 'title track')
@@ -283,6 +286,7 @@ exports.normalizeScores = exports.runNormalization;
 exports.getLeaderboard = async (req, res, next) => {
   try {
     const submissions = await Submission.find({ status: { $in: ['submitted', 'locked'] } })
+      .populate('team', 'name')
       .populate('teamId', 'name')
       .lean();
 
@@ -291,7 +295,8 @@ exports.getLeaderboard = async (req, res, next) => {
     // Group scores by submissionId
     const scoresBySub = {};
     scores.forEach((s) => {
-      const subId = s.submissionId.toString();
+      const subId = (s.submissionId || s.submission?._id || s.submission || '').toString();
+      if (!subId) return;
       if (!scoresBySub[subId]) scoresBySub[subId] = [];
       scoresBySub[subId].push(s);
     });
@@ -303,7 +308,7 @@ exports.getLeaderboard = async (req, res, next) => {
       const ballotCount = subScores.length;
       const rawMean =
         ballotCount > 0
-          ? subScores.reduce((sum, s) => sum + s.totalRawScore, 0) / ballotCount
+          ? subScores.reduce((sum, s) => sum + (s.totalRawScore || s.rawCompositeScore || 0), 0) / ballotCount
           : 0;
 
       const normalizedScore =
@@ -319,12 +324,12 @@ exports.getLeaderboard = async (req, res, next) => {
       return {
         id: sub._id,
         title: sub.title,
-        tagline: sub.tagline,
+        tagline: sub.tagline || sub.pitch,
         track: sub.track,
-        teamName: sub.teamId?.name || 'Unknown Team',
-        repoUrl: sub.repoUrl,
-        demoUrl: sub.demoUrl,
-        thumbnailPath: sub.thumbnailPath,
+        teamName: sub.team?.name || sub.teamId?.name || 'Unknown Team',
+        repoUrl: sub.repoUrl || sub.githubUrl,
+        demoUrl: sub.demoUrl || sub.demoVideoUrl,
+        thumbnailPath: sub.thumbnailPath || sub.thumbnailUrl,
         publicVoteCount: sub.publicVoteCount || 0,
         ballotCount,
         rawMean: Number(rawMean.toFixed(2)),

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Submission = require('../models/Submission');
+const Score = require('../models/Score');
 const Team = require('../models/Team');
 const Event = require('../models/Event');
 const AuditLog = require('../models/AuditLog');
@@ -134,10 +135,49 @@ exports.getMySubmission = async (req, res, next) => {
       });
     }
 
+    const { buildEvaluationData } = require('./teamController');
+    const subId = submission._id;
+    let scores = [];
+    const canQueryScores = (mongoose.connection && mongoose.connection.readyState === 1) || (Score.find && (Score.find.mock || Score.find._isMockFunction));
+    if (canQueryScores) {
+      try {
+        scores = await Score.find({
+          $or: [{ submission: subId }, { submissionId: subId }],
+          isFinal: true,
+        })
+          .populate('judge', 'name fullName email role')
+          .lean();
+      } catch (_) { }
+    }
+
+    let evaluation = null;
+    let submissionObj = submission;
+
+    if (scores && scores.length > 0) {
+      evaluation = buildEvaluationData(scores);
+      submissionObj = typeof submission.toObject === 'function' ? submission.toObject({ virtuals: true }) : { ...submission };
+      submissionObj.evaluation = evaluation;
+      submissionObj.isEvaluated = true;
+    }
+
+    const responseData = { submission: submissionObj };
+    if (evaluation) {
+      responseData.evaluation = evaluation;
+    }
+
     return res.status(200).json({
       success: true,
-      data: { submission },
+      data: responseData,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getPublicLeaderboard = async (req, res, next) => {
+  try {
+    const adminController = require('./adminController');
+    return adminController.getLeaderboard(req, res, next);
   } catch (error) {
     next(error);
   }
@@ -230,10 +270,25 @@ exports.finalizeSubmission = async (req, res, next) => {
       event = await Event.findById(submission.event);
     }
     if (!event) {
+      event = await Event.findOne({
+        status: 'active',
+        $or: [
+          { submissionDeadline: { $gt: new Date() } },
+          { submissionDeadline: null },
+          { submissionDeadline: { $exists: false } },
+        ],
+      });
+    }
+    if (!event) {
       event = await Event.findOne({ status: 'active' });
     }
     if (!event) {
-      event = await Event.findOne().sort({ createdAt: -1 });
+      const q = Event.findOne();
+      event = typeof q?.sort === 'function' ? await q.sort({ createdAt: -1 }) : await q;
+    }
+
+    if (event && !submission.event) {
+      submission.event = event._id;
     }
 
     if (event && event.submissionDeadline) {
@@ -306,6 +361,14 @@ exports.finalizeSubmission = async (req, res, next) => {
           await teamDoc.save();
         }
       }
+    }
+
+    // Auto-assign judges immediately so project is visible in Judge Console and Organiser Console
+    try {
+      const { autoAssignSubmission } = require('../services/assignmentSolver');
+      await autoAssignSubmission(submission);
+    } catch (assignErr) {
+      console.error('Auto-assignment on submission lock error:', assignErr);
     }
 
     try {

@@ -1,55 +1,57 @@
 import React from 'react';
 
 export const RubricSlider = ({ criterion, value, onChange }) => {
-  const currentVal = value !== undefined ? value : 5.0;
-  const weightedContribution = ((currentVal * criterion.weight)).toFixed(2);
+  const currentVal = value !== undefined && value !== null ? value : 5.0;
+  const weightedContribution = (currentVal * criterion.weight).toFixed(2);
 
-  const handleChipClick = (val) => {
-    onChange(criterion.name, val);
-  };
+  const handleChipClick = (val) => onChange(criterion.name, val);
 
   const handleKeyDown = (e) => {
     const key = e.key;
-    if (key >= '1' && key <= '9') {
-      e.preventDefault();
-      onChange(criterion.name, parseFloat(key));
-    } else if (key === '0') {
-      e.preventDefault();
-      onChange(criterion.name, 10.0);
-    }
+    if (key >= '1' && key <= '9') { e.preventDefault(); onChange(criterion.name, parseFloat(key)); }
+    else if (key === '0')          { e.preventDefault(); onChange(criterion.name, 10.0); }
   };
+
+  // Score color band
+  const scoreColor =
+    currentVal >= 8   ? 'text-status-success' :
+    currentVal >= 5   ? 'text-primary'         :
+    currentVal >= 3   ? 'text-status-warning'  :
+                        'text-error';
 
   return (
     <div
-      className="p-4 rounded-xl bg-surface-raised border border-border-subtle hover:border-gray-600 transition-colors focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 outline-none"
+      className="p-4 rounded-xl bg-surface-container-lowest border border-surface-container hover:border-outline-variant transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 outline-none"
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center space-x-2">
-          <span className="font-semibold text-sm text-gray-100">{criterion.name}</span>
-          <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-blue-950/60 text-blue-300 border border-blue-800/40">
-            {Math.round(criterion.weight * 100)}% Weight
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="font-title-md text-title-md text-on-surface font-semibold">{criterion.name}</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full font-label-caps text-label-caps bg-primary/8 border border-primary/20 text-primary font-bold">
+            {Math.round(criterion.weight * 100)}%
           </span>
         </div>
         <div className="text-right">
-          <span className="text-xl font-bold font-mono text-blue-400">
+          <span className={`font-headline-sm text-headline-sm font-extrabold leading-none ${scoreColor}`}>
             {currentVal.toFixed(1)}
           </span>
-          <span className="text-xs text-gray-400 font-mono ml-1">/ 10</span>
+          <span className="font-body-sm text-body-sm text-on-surface-variant ml-1">/ 10</span>
         </div>
       </div>
 
-      <div className="flex space-x-2 mb-3">
-        {[1, 3, 5, 7, 9].map((chip) => (
+      {/* Quick chips */}
+      <div className="flex gap-1.5 mb-3">
+        {[1, 3, 5, 7, 10].map((chip) => (
           <button
             key={chip}
             type="button"
             onClick={() => handleChipClick(chip)}
-            className={`px-3 py-1 rounded text-xs font-mono font-bold border transition-colors focus:outline-none ${
+            className={`flex-1 py-1 rounded-lg font-label-caps text-label-caps font-bold border transition-all active:scale-95 ${
               currentVal === chip
-                ? 'bg-blue-600 border-blue-500 text-white'
-                : 'bg-canvas border-border-subtle text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                ? 'bg-primary-container text-on-primary border-primary shadow-sm'
+                : 'bg-surface-container-low border-outline-variant/60 text-on-surface-variant hover:border-outline hover:text-on-surface'
             }`}
           >
             {chip}
@@ -57,6 +59,7 @@ export const RubricSlider = ({ criterion, value, onChange }) => {
         ))}
       </div>
 
+      {/* Slider */}
       <input
         type="range"
         min={criterion.scaleMin || 1.0}
@@ -64,13 +67,14 @@ export const RubricSlider = ({ criterion, value, onChange }) => {
         step="0.5"
         value={currentVal}
         onChange={(e) => onChange(criterion.name, parseFloat(e.target.value))}
-        className="w-full h-2 rounded-lg cursor-pointer accent-blue-500 my-2"
+        className="w-full cursor-pointer my-1"
         tabIndex={-1}
       />
 
-      <div className="flex justify-between items-center text-[11px] text-gray-400 font-mono mt-1">
+      {/* Footer metadata */}
+      <div className="flex justify-between items-center font-label-caps text-label-caps text-on-surface-variant mt-1.5">
         <span>Min: {criterion.scaleMin || 1}</span>
-        <span>Contributes: +{weightedContribution} pts</span>
+        <span className="text-primary font-bold">+{weightedContribution} pts</span>
         <span>Max: {criterion.scaleMax || 10}</span>
       </div>
     </div>

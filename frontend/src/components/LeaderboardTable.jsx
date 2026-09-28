@@ -5,21 +5,17 @@ import { Trophy, TrendingUp, BarChart2, ChevronUp, ChevronDown, Minus } from 'lu
 export const LeaderboardTable = ({ data = [], onSelectProject }) => {
   const [useNormalized, setUseNormalized] = useState(true);
 
-  // Compute raw ranks and normalized ranks to calculate shift
   const ranks = useMemo(() => {
-    const rawRanks = {};
+    const rawRanks  = {};
     const normRanks = {};
-
-    const sortedByRaw = [...data].sort((a, b) => (b.rawMean || 0) - (a.rawMean || 0));
-    sortedByRaw.forEach((proj, idx) => {
-      rawRanks[proj.id] = idx + 1;
+    [...data].sort((a, b) => (b.rawMean || 0) - (a.rawMean || 0)).forEach((proj, idx) => {
+      const pid = proj.id || proj._id;
+      if (pid) rawRanks[pid] = idx + 1;
     });
-
-    const sortedByNorm = [...data].sort((a, b) => (b.normalizedScore || 0) - (a.normalizedScore || 0));
-    sortedByNorm.forEach((proj, idx) => {
-      normRanks[proj.id] = idx + 1;
+    [...data].sort((a, b) => (b.normalizedScore || 0) - (a.normalizedScore || 0)).forEach((proj, idx) => {
+      const pid = proj.id || proj._id;
+      if (pid) normRanks[pid] = idx + 1;
     });
-
     return { rawRanks, normRanks };
   }, [data]);
 
@@ -28,56 +24,59 @@ export const LeaderboardTable = ({ data = [], onSelectProject }) => {
       const scoreA = a.normalizedScore != null ? a.normalizedScore : -1;
       const scoreB = b.normalizedScore != null ? b.normalizedScore : -1;
       return scoreB - scoreA;
-    } else {
-      return (b.rawMean || 0) - (a.rawMean || 0);
     }
+    return (b.rawMean || 0) - (a.rawMean || 0);
   });
 
+  const medalClass = (rank) => {
+    if (rank === 1) return 'bg-[#FFD700]/15 border-[#FFD700]/50 text-[#B8860B]';
+    if (rank === 2) return 'bg-[#C0C0C0]/15 border-[#C0C0C0]/50 text-[#707070]';
+    if (rank === 3) return 'bg-[#CD7F32]/15 border-[#CD7F32]/50 text-[#8B4513]';
+    return 'bg-surface-container border-outline-variant/60 text-on-surface-variant';
+  };
+
   return (
-    <div className="bg-surface rounded-xl border border-border-subtle overflow-hidden">
-      <div className="p-4 bg-surface-raised border-b border-border-subtle flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="bg-surface-container-lowest rounded-2xl border border-surface-container shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 bg-surface-container-low border-b border-surface-container flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h3 className="font-bold text-base text-white flex items-center space-x-2">
-            <Trophy className="w-5 h-5 text-amber-400" />
-            <span>Tournament Standings</span>
+          <h3 className="font-title-md text-title-md text-on-surface font-bold flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-status-warning" />
+            Tournament Standings
           </h3>
-          <p className="text-xs text-gray-400">
-            Real-time calibrated rankings calculated across all judge ballots.
+          <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+            Real-time calibrated rankings across all judge ballots.
           </p>
         </div>
 
-        <div className="flex items-center bg-canvas p-1 rounded-lg border border-border-subtle">
-          <button
-            onClick={() => setUseNormalized(true)}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-              useNormalized
-                ? 'bg-blue-600 text-white shadow-glow'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Normalized (0-100)</span>
-          </button>
-          <button
-            onClick={() => setUseNormalized(false)}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-              !useNormalized
-                ? 'bg-blue-600 text-white shadow-glow'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <BarChart2 className="w-3.5 h-3.5" />
-            <span>Raw Average (1-10)</span>
-          </button>
+        <div className="flex items-center bg-surface-container p-1 rounded-xl border border-outline-variant/40 gap-0.5">
+          {[
+            { id: true,  label: 'Normalized (0–100)', Icon: TrendingUp },
+            { id: false, label: 'Raw Avg (1–10)',      Icon: BarChart2  },
+          ].map(({ id, label, Icon }) => (
+            <button
+              key={String(id)}
+              onClick={() => setUseNormalized(id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-label-caps text-label-caps font-bold transition-all ${
+                useNormalized === id
+                  ? 'bg-primary-container text-on-primary shadow-sm'
+                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
+      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm text-gray-300">
-          <thead className="bg-canvas/50 text-[11px] font-mono uppercase text-gray-400 border-b border-border-subtle whitespace-nowrap">
-            <tr>
+        <table className="w-full text-left">
+          <thead className="bg-surface-container/50 border-b border-surface-container">
+            <tr className="font-label-caps text-label-caps text-on-surface-variant font-semibold uppercase tracking-wider whitespace-nowrap">
               <th className="py-3 px-4">Rank</th>
-              <th className="py-3 px-4">Project Title</th>
+              <th className="py-3 px-4">Project</th>
               <th className="py-3 px-4">Track</th>
               <th className="py-3 px-4">Team</th>
               <th className="py-3 px-4 text-center">Raw Mean</th>
@@ -86,107 +85,73 @@ export const LeaderboardTable = ({ data = [], onSelectProject }) => {
               <th className="py-3 px-4 text-center">Ballots</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border-subtle font-normal">
+          <tbody className="divide-y divide-surface-container">
             {sortedData.length === 0 ? (
               <tr>
-                <td colSpan="8" className="py-8 text-center text-gray-500">
-                  No scored projects currently available.
+                <td colSpan="8" className="py-12 text-center font-body-md text-body-md text-on-surface-variant">
+                  No scored projects available yet.
                 </td>
               </tr>
             ) : (
               sortedData.map((project, index) => {
-                const rank = index + 1;
-                const rawRank = ranks.rawRanks[project.id];
-                const normRank = ranks.normRanks[project.id];
-                
-                // Shift is calculated based on how normalization changed their rank
-                // A positive shift means they moved UP (rank decreased)
-                // We show this primarily when viewing normalized view, or vice versa
-                const shift = rawRank - normRank;
-
+                const rank    = index + 1;
+                const projId  = project.id || project._id;
+                const shift   = (ranks.rawRanks[projId] != null && ranks.normRanks[projId] != null)
+                  ? ranks.rawRanks[projId] - ranks.normRanks[projId]
+                  : 0;
                 return (
                   <tr
                     key={project.id || index}
                     onClick={() => onSelectProject && onSelectProject(project)}
-                    className="hover:bg-surface-raised/60 transition-colors cursor-pointer"
+                    className="hover:bg-surface-container-low transition-colors cursor-pointer group"
                   >
-                    <td className="py-3 px-4 font-mono font-bold whitespace-nowrap">
-                      <div className="flex items-center space-x-3">
-                        <span
-                          className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs ${
-                            rank === 1
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
-                              : rank === 2
-                              ? 'bg-slate-300/20 text-slate-200 border border-slate-400/50'
-                              : rank === 3
-                              ? 'bg-amber-800/20 text-amber-500 border border-amber-800/50'
-                              : 'text-gray-400 bg-canvas border border-border-subtle'
-                          }`}
-                        >
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full font-label-caps text-label-caps font-bold border ${medalClass(rank)}`}>
                           #{rank}
                         </span>
-                        
-                        {/* Rank Shift Badge */}
                         {useNormalized && project.normalizedScore != null && (
                           <div className="flex items-center justify-center w-5">
                             {shift > 0 ? (
-                              <div className="flex items-center text-emerald-400 text-[10px]" title={`Moved up ${shift} spots`}>
-                                <ChevronUp className="w-3 h-3" />
-                                <span>{shift}</span>
+                              <div className="flex items-center text-status-success font-label-caps text-[10px]" title={`Up ${shift}`}>
+                                <ChevronUp className="w-3 h-3" /><span>{shift}</span>
                               </div>
                             ) : shift < 0 ? (
-                              <div className="flex items-center text-rose-400 text-[10px]" title={`Moved down ${Math.abs(shift)} spots`}>
-                                <ChevronDown className="w-3 h-3" />
-                                <span>{Math.abs(shift)}</span>
+                              <div className="flex items-center text-error font-label-caps text-[10px]" title={`Down ${Math.abs(shift)}`}>
+                                <ChevronDown className="w-3 h-3" /><span>{Math.abs(shift)}</span>
                               </div>
                             ) : (
-                              <Minus className="w-3 h-3 text-gray-600" title="No rank change" />
+                              <Minus className="w-3 h-3 text-outline" />
                             )}
                           </div>
                         )}
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="font-semibold text-white truncate max-w-[200px]" title={project.title}>
+                      <div className="font-title-md text-title-md text-on-surface font-semibold truncate max-w-[200px] group-hover:text-primary transition-colors" title={project.title}>
                         {project.title}
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-[10px] border font-medium ${getTrackBadgeColor(
-                          project.track
-                        )}`}
-                      >
+                      <span className={`inline-block px-2 py-0.5 rounded-full font-label-caps text-label-caps border ${getTrackBadgeColor(project.track)}`}>
                         {project.track}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-xs text-gray-400 truncate max-w-[150px]" title={project.teamName}>
+                    <td className="py-3 px-4 font-body-sm text-body-sm text-on-surface-variant truncate max-w-[150px]" title={project.teamName}>
                       {project.teamName}
                     </td>
-                    <td className="py-3 px-4 text-center font-mono">
-                      <span className="text-blue-400 font-bold">
-                        {formatScore(project.rawMean, 2)}
-                      </span>
+                    <td className="py-3 px-4 text-center font-mono font-bold text-primary">
+                      {formatScore(project.rawMean, 2)}
                     </td>
-                    <td className="py-3 px-4 text-center font-mono">
-                      {project.normalizedScore != null ? (
-                        <span className="text-emerald-400 font-bold">
-                          {formatScore(project.normalizedScore, 2)}
-                        </span>
-                      ) : (
-                        <span className="text-gray-600 text-xs">--</span>
-                      )}
+                    <td className="py-3 px-4 text-center font-mono font-bold text-status-success">
+                      {project.normalizedScore != null ? formatScore(project.normalizedScore, 2) : <span className="text-outline font-normal">—</span>}
                     </td>
-                    <td className="py-3 px-4 text-center font-mono">
-                      {project.zScore != null ? (
-                        <span className="text-purple-400 font-bold text-xs">
-                          {project.zScore > 0 ? '+' : ''}{formatScore(project.zScore, 3)}
-                        </span>
-                      ) : (
-                        <span className="text-gray-600 text-xs">--</span>
-                      )}
+                    <td className="py-3 px-4 text-center font-mono font-bold text-secondary">
+                      {project.zScore != null
+                        ? <>{project.zScore > 0 ? '+' : ''}{formatScore(project.zScore, 3)}</>
+                        : <span className="text-outline font-normal">—</span>}
                     </td>
-                    <td className="py-3 px-4 text-center font-mono text-xs text-gray-400">
+                    <td className="py-3 px-4 text-center font-body-sm text-body-sm text-on-surface-variant">
                       {project.ballotCount || 0}
                     </td>
                   </tr>

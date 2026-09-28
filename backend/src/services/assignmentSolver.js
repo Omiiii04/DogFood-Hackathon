@@ -393,7 +393,118 @@ function solveJudgeAssignments(submissions = [], judges = [], targetPerProject =
   };
 }
 
+/**
+ * Auto-assigns up to target judges for a single newly submitted or unassigned submission.
+ */
+async function autoAssignSubmission(submission, preloadedJudges = null) {
+  if (!submission || !submission._id) return [];
+  const mongoose = require('mongoose');
+  if (mongoose.connection.readyState !== 1) return [];
+
+  const User = require('../models/User');
+  const JudgeAssignment = require('../models/JudgeAssignment');
+
+  const judges = preloadedJudges || (await User.find({ role: 'judge' }));
+  if (!judges || judges.length === 0) return [];
+
+  const available = judges.filter((j) => !hasConflict(j, submission));
+  if (!available.length) return [];
+
+  const judgeLoads = await Promise.all(
+    available.map(async (j) => {
+      const count = await JudgeAssignment.countDocuments({
+        $or: [{ judgeId: j._id }, { judge: j._id }],
+      });
+      const cost = getTrackCost(j, submission.track);
+      return { judge: j, count, cost };
+    })
+  );
+
+  // Prioritize matching track first, then least loaded judge
+  judgeLoads.sort((a, b) => {
+    if (a.cost !== b.cost) return a.cost - b.cost;
+    return a.count - b.count;
+  });
+
+  const target = Math.min(2, judgeLoads.length);
+  const selected = judgeLoads.slice(0, target).map((x) => x.judge);
+
+  const results = [];
+  for (const j of selected) {
+    const existing = await JudgeAssignment.findOne({
+      $or: [
+        { judgeId: j._id, submissionId: submission._id },
+        { judge: j._id, submission: submission._id },
+      ],
+    });
+    if (existing && existing.status === 'completed') {
+      results.push(existing);
+      continue;
+    }
+
+    const assignment = await JudgeAssignment.findOneAndUpdate(
+      {
+        judgeId: j._id,
+        submissionId: submission._id,
+      },
+      {
+        $set: {
+          judgeId: j._id,
+          submissionId: submission._id,
+          track: submission.track,
+        },
+        $setOnInsert: {
+          status: 'assigned',
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    results.push(assignment);
+  }
+  return results;
+}
+
+/**
+ * Ensures all submitted/locked submissions have at least 1 judge assignment.
+ */
+async function ensureSubmissionsAssigned() {
+  const mongoose = require('mongoose');
+  if (mongoose.connection.readyState !== 1) return [];
+
+  const Submission = require('../models/Submission');
+  const JudgeAssignment = require('../models/JudgeAssignment');
+  const User = require('../models/User');
+
+  const submissions = await Submission.find({
+    status: { $in: ['submitted', 'locked'] },
+  });
+  if (!submissions.length) return [];
+
+  const judges = await User.find({ role: 'judge' });
+  if (!judges.length) return [];
+
+  const existingAssignments = await JudgeAssignment.find().select('submissionId submission');
+  const assignedSet = new Set(
+    existingAssignments
+      .map((a) => (a.submissionId?._id || a.submission?._id || a.submissionId || a.submission)?.toString())
+      .filter(Boolean)
+  );
+
+  const unassigned = submissions.filter((s) => !assignedSet.has(s._id.toString()));
+  if (!unassigned.length) return [];
+
+  const created = [];
+  for (const sub of unassigned) {
+    const res = await autoAssignSubmission(sub, judges);
+    created.push(...res);
+  }
+  return created;
+}
+
 module.exports = {
   solveJudgeAssignments,
   hasConflict,
+  getTrackCost,
+  autoAssignSubmission,
+  ensureSubmissionsAssigned,
 };

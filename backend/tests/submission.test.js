@@ -104,7 +104,7 @@ describe('Submission Model Schema and Validation Unit Tests', () => {
       track: 'AI',
       description: 'Project details',
       githubUrl: 'https://github.com/valid/project',
-      status: 'locked', // Not in ['draft', 'submitted']
+      status: 'archived', // Not in ['draft', 'submitted', 'locked']
     });
     const err = invalidStatus.validateSync();
     expect(err).toBeDefined();

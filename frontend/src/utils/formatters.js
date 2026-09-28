@@ -17,14 +17,14 @@ export const formatScore = (score, digits = 2) => {
 export const getTrackBadgeColor = (track) => {
   switch (track) {
     case 'AI/ML':
-      return 'bg-purple-900/40 text-purple-300 border-purple-700/50';
+      return 'bg-violet-100 text-violet-700 border-violet-200';
     case 'Web3 & Blockchain':
-      return 'bg-amber-900/40 text-amber-300 border-amber-700/50';
+      return 'bg-amber-100 text-amber-700 border-amber-200';
     case 'FinTech':
-      return 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50';
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
     case 'HealthTech':
-      return 'bg-rose-900/40 text-rose-300 border-rose-700/50';
+      return 'bg-rose-100 text-rose-700 border-rose-200';
     default:
-      return 'bg-blue-900/40 text-blue-300 border-blue-700/50';
+      return 'bg-blue-100 text-blue-700 border-blue-200';
   }
 };

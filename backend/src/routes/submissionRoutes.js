@@ -17,6 +17,9 @@ router.get(
   submissionController.getMySubmission
 );
 
+// Public route: tournament leaderboard
+router.get('/leaderboard', submissionController.getPublicLeaderboard);
+
 // Public route: view submission by ID
 router.get('/:id', submissionController.getSubmissionById);
 

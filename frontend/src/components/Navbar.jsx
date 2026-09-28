@@ -49,21 +49,19 @@ export const Navbar = () => {
         </Link>
 
         <nav className="hidden lg:flex items-center gap-5 xl:gap-6 shrink-0">
-          <Link to="/gallery" className={navLinkClass('/gallery')}>
-            Explore Hackathons
+          {/* Home: visible to all users */}
+          <Link to="/" className={navLinkClass('/')}>
+            Home
           </Link>
-          <Link to="/gallery" className={navLinkClass('/gallery-showcase')}>
-            Showcase Gallery
-          </Link>
-          <Link to="/" className={navLinkClass('/tracks')}>
-            Tracks & Prizes
-          </Link>
-          <Link to="/" className={navLinkClass('/leaderboard')}>
-            Leaderboard
-          </Link>
-          <Link to="/" className={navLinkClass('/faq')}>
-            FAQ
-          </Link>
+
+          {/* Explore Hackathons: visible to participants and unauthenticated users (landing page) */}
+          {(!user || user.role === 'participant') && (
+            <Link to="/hackathons" className={navLinkClass('/hackathons')}>
+              Explore Hackathons
+            </Link>
+          )}
+
+
 
           {user && user.role === 'participant' && (
             <>
@@ -76,7 +74,8 @@ export const Navbar = () => {
             </>
           )}
 
-          {user && ['judge', 'organizer', 'admin'].includes(user.role) && (
+          {/* Judging Queue: visible to judges only */}
+          {user && user.role === 'judge' && (
             <Link to="/judging" className={navLinkClass('/judging')}>
               Judging Queue
             </Link>
@@ -135,21 +134,19 @@ export const Navbar = () => {
 
       {mobileOpen && (
         <div className="lg:hidden border-t border-surface-container bg-surface-container-lowest px-4 pt-3 pb-4 flex flex-col space-y-1 shadow-md">
-          <Link to="/gallery" className={mobileNavLinkClass('/gallery')}>
-            Explore Hackathons
+          {/* Home: visible to all users */}
+          <Link to="/" className={mobileNavLinkClass('/')}>
+            Home
           </Link>
-          <Link to="/gallery" className={mobileNavLinkClass('/gallery-showcase')}>
-            Showcase Gallery
-          </Link>
-          <Link to="/" className={mobileNavLinkClass('/tracks')}>
-            Tracks & Prizes
-          </Link>
-          <Link to="/" className={mobileNavLinkClass('/leaderboard')}>
-            Leaderboard
-          </Link>
-          <Link to="/" className={mobileNavLinkClass('/faq')}>
-            FAQ
-          </Link>
+
+          {/* Explore Hackathons: visible to participants and unauthenticated users */}
+          {(!user || user.role === 'participant') && (
+            <Link to="/hackathons" className={mobileNavLinkClass('/hackathons')}>
+              Explore Hackathons
+            </Link>
+          )}
+
+
 
           {user && user.role === 'participant' && (
             <>
@@ -162,7 +159,8 @@ export const Navbar = () => {
             </>
           )}
 
-          {user && ['judge', 'organizer', 'admin'].includes(user.role) && (
+          {/* Judging Queue: visible to judges only */}
+          {user && user.role === 'judge' && (
             <Link to="/judging" className={mobileNavLinkClass('/judging')}>
               Judging Queue
             </Link>

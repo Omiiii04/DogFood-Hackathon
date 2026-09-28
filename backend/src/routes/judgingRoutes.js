@@ -53,4 +53,11 @@ router.get(
   judgingController.getPairwiseComparisons
 );
 
+// Auto-evaluate all pending queue items for the current judge via the judging engine
+router.post(
+  '/auto-evaluate',
+  roleGuard('judge', 'organizer', 'admin'),
+  judgingController.autoEvaluateQueue
+);
+
 module.exports = router;

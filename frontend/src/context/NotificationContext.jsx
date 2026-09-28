@@ -25,30 +25,30 @@ export const NotificationProvider = ({ children }) => {
     <NotificationContext.Provider value={{ addNotification, removeNotification }}>
       {children}
       {/* Toast container */}
-      <div className="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none">
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
         {notifications.map((n) => (
           <div
             key={n.id}
-            className={`pointer-events-auto flex items-center justify-between p-4 rounded-lg shadow-card border backdrop-blur-md min-w-[300px] max-w-md transition-all duration-300 ${
+            className={`pointer-events-auto flex items-center justify-between px-4 py-3 rounded-xl border shadow-[0_8px_24px_rgba(0,72,212,0.12)] backdrop-blur-md min-w-[300px] max-w-md transition-all duration-300 animate-fade-in-up ${
               n.type === 'success'
-                ? 'bg-emerald-950/90 border-emerald-700/60 text-emerald-200'
+                ? 'bg-white/90 border-status-success/30 text-on-surface'
                 : n.type === 'error'
-                ? 'bg-rose-950/90 border-rose-700/60 text-rose-200'
+                ? 'bg-white/90 border-error/30 text-on-surface'
                 : n.type === 'warning'
-                ? 'bg-amber-950/90 border-amber-700/60 text-amber-200'
-                : 'bg-gray-900/90 border-gray-700 text-gray-200'
+                ? 'bg-white/90 border-status-warning/30 text-on-surface'
+                : 'bg-white/90 border-primary/20 text-on-surface'
             }`}
           >
-            <div className="flex items-center space-x-3">
-              {n.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
-              {n.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />}
-              {n.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />}
-              {n.type === 'info' && <Info className="w-5 h-5 text-blue-400 shrink-0" />}
-              <span className="text-sm font-medium">{n.message}</span>
+            <div className="flex items-center gap-3">
+              {n.type === 'success' && <CheckCircle2 className="w-4 h-4 text-status-success shrink-0" />}
+              {n.type === 'error'   && <AlertCircle  className="w-4 h-4 text-error shrink-0" />}
+              {n.type === 'warning' && <AlertTriangle className="w-4 h-4 text-status-warning shrink-0" />}
+              {n.type === 'info'    && <Info className="w-4 h-4 text-primary shrink-0" />}
+              <span className="font-body-md text-body-md font-medium">{n.message}</span>
             </div>
             <button
               onClick={() => removeNotification(n.id)}
-              className="text-gray-400 hover:text-white ml-3 transition-colors"
+              className="text-on-surface-variant hover:text-on-surface ml-3 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>

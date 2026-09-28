@@ -6,75 +6,76 @@ export const AuditLogViewer = ({ logs }) => {
 
   if (!logs || logs.length === 0) {
     return (
-      <div className="p-8 text-center text-sm text-gray-400 bg-surface border border-border-subtle rounded-xl">
-        No audit logs available.
+      <div className="p-8 text-center bg-surface-container-low border border-surface-container rounded-xl">
+        <span className="material-symbols-outlined text-[36px] text-on-surface-variant mb-2 block">receipt_long</span>
+        <p className="font-body-md text-body-md text-on-surface-variant">No audit logs available.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {logs.map((log) => {
         const isExpanded = expandedLogId === log._id;
         return (
-          <div key={log._id} className="bg-surface border border-border-subtle rounded-xl overflow-hidden">
-            <div 
-              className="p-4 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer hover:bg-surface-raised transition-colors gap-3"
+          <div key={log._id} className="bg-surface-container-lowest border border-surface-container rounded-xl overflow-hidden hover:border-outline-variant/60 transition-colors">
+            {/* Row Header */}
+            <div
+              className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between cursor-pointer hover:bg-surface-container-low/50 transition-colors gap-3"
               onClick={() => setExpandedLogId(isExpanded ? null : log._id)}
             >
-              <div className="flex items-center space-x-4">
-                <div className="p-2 bg-blue-900/30 text-blue-400 rounded-lg shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/8 border border-primary/20 text-primary rounded-xl shrink-0">
                   <Shield className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                  <h4 className="font-label-caps text-label-caps text-on-surface font-bold uppercase tracking-wider">
                     {log.action}
                   </h4>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Target: <span className="text-gray-300 font-medium">{log.targetResource}</span>
-                    {log.resourceId && ` (${log.resourceId.slice(-6)})`}
+                  <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">
+                    Target: <span className="text-on-surface font-medium">{log.targetResource}</span>
+                    {log.resourceId && ` (…${log.resourceId.slice(-6)})`}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center sm:justify-end space-x-6 text-xs text-gray-400">
-                <div className="flex items-center space-x-1.5 font-mono">
+              <div className="flex items-center gap-4 font-body-sm text-body-sm text-on-surface-variant">
+                <div className="flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>{new Date(log.timestamp).toLocaleTimeString()}</span>
+                  <span className="font-mono">{new Date(log.timestamp).toLocaleTimeString()}</span>
                 </div>
-                <div className="flex items-center space-x-1.5">
-                  <span className="px-2 py-0.5 bg-gray-800 rounded font-mono text-[10px] text-gray-400">
-                    {log.ipHash?.slice(0, 8) || 'unknown'}
-                  </span>
-                </div>
-                {isExpanded ? <ChevronUp className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
+                <span className="px-2 py-0.5 bg-surface-container border border-outline-variant/50 rounded-lg font-mono font-label-caps text-label-caps text-on-surface-variant">
+                  {log.ipHash?.slice(0, 8) || 'unknown'}
+                </span>
+                {isExpanded
+                  ? <ChevronUp className="w-4 h-4 text-on-surface-variant shrink-0" />
+                  : <ChevronDown className="w-4 h-4 text-on-surface-variant shrink-0" />}
               </div>
             </div>
 
+            {/* Expanded Details */}
             {isExpanded && (
-              <div className="p-4 bg-canvas border-t border-border-subtle overflow-x-auto">
-                <div className="text-[11px] font-mono text-gray-300 space-y-2">
-                  <div className="grid grid-cols-2 gap-4">
+              <div className="px-4 py-4 bg-surface-container-low border-t border-surface-container overflow-x-auto">
+                <div className="font-mono text-xs space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <span className="text-gray-500 font-bold mb-1 block">Actor Info:</span>
-                      <div className="bg-surface-raised p-2 rounded">
-                        <span className="text-blue-400">Role:</span> {log.actorRole || 'System'}
-                        <br />
-                        <span className="text-blue-400">ID:</span> {log.actorId || 'N/A'}
+                      <span className="font-label-caps text-label-caps text-on-surface-variant font-semibold uppercase tracking-wider block mb-1.5">Actor Info</span>
+                      <div className="bg-surface-container-lowest border border-outline-variant/40 p-3 rounded-xl space-y-1">
+                        <div><span className="text-primary font-semibold">Role:</span> <span className="text-on-surface">{log.actorRole || 'System'}</span></div>
+                        <div><span className="text-primary font-semibold">ID:</span> <span className="text-on-surface">{log.actorId || 'N/A'}</span></div>
                       </div>
                     </div>
                     <div>
-                      <span className="text-gray-500 font-bold mb-1 block">Cryptographic Binding:</span>
-                      <div className="bg-surface-raised p-2 rounded truncate" title={log.signature}>
-                        <span className="text-purple-400">Signature:</span> {log.signature?.slice(0, 16)}...
-                        <br />
-                        <span className="text-purple-400">IP Hash:</span> {log.ipHash}
+                      <span className="font-label-caps text-label-caps text-on-surface-variant font-semibold uppercase tracking-wider block mb-1.5">Cryptographic Binding</span>
+                      <div className="bg-surface-container-lowest border border-outline-variant/40 p-3 rounded-xl space-y-1">
+                        <div className="truncate"><span className="text-secondary font-semibold">Sig:</span> <span className="text-on-surface">{log.signature?.slice(0, 16)}…</span></div>
+                        <div><span className="text-secondary font-semibold">IP Hash:</span> <span className="text-on-surface">{log.ipHash}</span></div>
                       </div>
                     </div>
                   </div>
                   <div>
-                    <span className="text-gray-500 font-bold mb-1 block mt-2">Payload (Tamper-Evident State Diff):</span>
-                    <pre className="bg-surface-raised p-3 rounded-lg text-emerald-400">
+                    <span className="font-label-caps text-label-caps text-on-surface-variant font-semibold uppercase tracking-wider block mb-1.5">Payload (Tamper-Evident State Diff)</span>
+                    <pre className="bg-surface-container-lowest border border-outline-variant/40 p-3 rounded-xl text-status-success overflow-x-auto">
                       {JSON.stringify(log.payload, null, 2)}
                     </pre>
                   </div>

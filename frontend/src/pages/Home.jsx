@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTimer } from '../hooks/useTimer';
+import { HackathonListSection } from '../components/HackathonListSection';
 
 export const Home = () => {
   const { user } = useAuth();
@@ -9,7 +10,7 @@ export const Home = () => {
   const timeLeft = useTimer(deadline);
 
   return (
-    <div className="flex flex-col w-full pt-20 max-w-[1280px] mx-auto px-margin-mobile md:px-margin">
+    <div className="flex flex-col w-full pt-6">
       <div className="relative w-full overflow-hidden pb-12 pt-6">
         <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-[980px] h-[480px] bg-gradient-to-b from-primary/10 via-secondary-fixed/30 to-transparent blur-3xl opacity-70 -z-10"></div>
         <div className="pointer-events-none absolute top-40 right-10 w-72 h-72 bg-tertiary-container/10 rounded-full blur-2xl -z-10"></div>
@@ -31,8 +32,8 @@ export const Home = () => {
           </p>
           
           <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
-            <Link to="/gallery" className="inline-flex items-center justify-center gap-2.5 px-7 py-3 h-12 rounded-full bg-primary-container text-on-primary font-title-md text-title-md font-bold shadow-[0_8px_20px_rgba(30,96,255,0.28)] hover:bg-primary hover:shadow-[0_12px_24px_rgba(30,96,255,0.36)] active:scale-[0.98] transition-all whitespace-nowrap shrink-0">
-              <span className="whitespace-nowrap">Explore Project Gallery</span>
+            <Link to="/hackathons" className="inline-flex items-center justify-center gap-2.5 px-7 py-3 h-12 rounded-full bg-primary-container text-on-primary font-title-md text-title-md font-bold shadow-[0_8px_20px_rgba(30,96,255,0.28)] hover:bg-primary hover:shadow-[0_12px_24px_rgba(30,96,255,0.36)] active:scale-[0.98] transition-all whitespace-nowrap shrink-0">
+              <span className="whitespace-nowrap">Explore Hackathon</span>
               <span className="material-symbols-outlined text-[20px] transition-transform group-hover:translate-x-1">arrow_forward</span>
             </Link>
             
@@ -228,6 +229,11 @@ export const Home = () => {
         </div>
       </section>
 
+      <HackathonListSection
+        title="Explore Hackathons"
+        subtitle="Browse all active competitions — open to participants, teams, and innovators."
+      />
+
       <section className="w-full py-6 mb-4">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary via-primary-container to-secondary p-8 sm:p-10 text-on-primary shadow-lg">
           <div className="absolute -right-8 -bottom-10 opacity-10 pointer-events-none">
@@ -250,7 +256,8 @@ export const Home = () => {
                 <span className="material-symbols-outlined text-[18px]">publish</span>
                 <span className="whitespace-nowrap">Submission Portal</span>
               </Link>
-              <Link to="/" className="inline-flex items-center justify-center gap-2 px-6 h-11 rounded-full bg-on-primary/10 border border-on-primary/20 text-on-primary font-title-md text-title-md font-semibold hover:bg-on-primary/20 backdrop-blur-sm active:scale-[0.98] transition-all whitespace-nowrap shrink-0">
+              <Link to="/rules" className="inline-flex items-center justify-center gap-2 px-6 h-11 rounded-full bg-on-primary/10 border border-on-primary/20 text-on-primary font-title-md text-title-md font-semibold hover:bg-on-primary/20 backdrop-blur-sm active:scale-[0.98] transition-all whitespace-nowrap shrink-0">
+                <span className="material-symbols-outlined text-[16px]">gavel</span>
                 <span className="whitespace-nowrap">Review Rules</span>
               </Link>
             </div>

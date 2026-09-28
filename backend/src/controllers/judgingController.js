@@ -18,18 +18,72 @@ exports.getAssignedQueue = async (req, res, next) => {
       });
     }
 
+    try {
+      const { ensureSubmissionsAssigned } = require('../services/assignmentSolver');
+      await ensureSubmissionsAssigned();
+    } catch (_) {}
+
     // Query assignments strictly belonging to req.user.id
     const assignments = await JudgeAssignment.find({
       $or: [{ judgeId: userId }, { judge: userId }],
     })
       .populate({
         path: 'submissionId',
+        select: 'title tagline description githubUrl repoUrl demoVideoUrl demoUrl thumbnailUrl track status team teamId publicVoteCount submittedAt',
         populate: [
           { path: 'team', select: 'name' },
-          { path: 'teamId', select: 'name' },
         ],
       })
       .sort({ status: 1, createdAt: 1 });
+
+    const isOrganizerOrAdmin = ['organizer', 'admin'].includes(req.user?.role);
+    if (assignments.length === 0 && isOrganizerOrAdmin) {
+      // For organizers and admins, surface all active submitted projects in the portal
+      const allSubs = await Submission.find({ status: { $in: ['submitted', 'locked'] } })
+        .select('title tagline description githubUrl repoUrl demoVideoUrl demoUrl thumbnailUrl track status team publicVoteCount submittedAt createdAt')
+        .populate('team', 'name')
+        .sort({ createdAt: -1 });
+
+      const subIds = allSubs.map((s) => s._id);
+      const existingScores = await Score.find({
+        $and: [
+          { $or: [{ judge: userId }, { judgeId: userId }] },
+          {
+            $or: [
+              { submission: { $in: subIds } },
+              { submissionId: { $in: subIds } },
+            ],
+          },
+        ],
+      });
+
+      const scoreMap = {};
+      existingScores.forEach((s) => {
+        const subId = (s.submission || s.submissionId)?.toString();
+        if (subId) scoreMap[subId] = s;
+      });
+
+      const queue = allSubs.map((sub) => {
+        const subIdStr = sub._id.toString();
+        const score = scoreMap[subIdStr] || null;
+        return {
+          assignmentId: sub._id,
+          track: sub.track,
+          status: score?.isFinal ? 'completed' : 'assigned',
+          submission: sub,
+          score,
+        };
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          queue,
+          submissions: allSubs,
+        },
+        submissions: allSubs,
+      });
+    }
 
     // Attach existing scores if any (only authenticated judge's own score)
     const submissionIds = assignments
@@ -215,9 +269,13 @@ exports.submitScore = async (req, res, next) => {
     );
 
     // Update assignment status
+    const subObjId = mongoose.Types.ObjectId.isValid(submissionId) ? new mongoose.Types.ObjectId(submissionId) : submissionId;
+    const userObjId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
     await JudgeAssignment.findOneAndUpdate(
       {
         $or: [
+          { judgeId: userObjId, submissionId: subObjId },
+          { judge: userObjId, submission: subObjId },
           { judgeId: userId, submissionId: submissionId },
           { judge: userId, submission: submissionId },
         ],
@@ -507,6 +565,151 @@ exports.getEventRubric = async (req, res, next) => {
         rubric,
         tracks: event?.tracks || ['AI/ML', 'Web3 & Blockchain', 'FinTech', 'HealthTech'],
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Auto-evaluate all pending assignments in the current judge's queue.
+ * Scores each unscored submission using the rubric median (5.0 per criterion)
+ * and marks them as final ballots.
+ * POST /api/v1/judging/auto-evaluate
+ */
+exports.autoEvaluateQueue = async (req, res, next) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized.' });
+    }
+
+    // Resolve the active rubric
+    let event = await Event.findOne({ status: 'active' });
+    if (!event) event = await Event.findOne().sort({ createdAt: -1 });
+
+    const defaultRubric = [
+      { name: 'Technical Execution', key: 'technical_execution', weight: 0.3 },
+      { name: 'Innovation & Originality', key: 'innovation_originality', weight: 0.25 },
+      { name: 'Practical Impact', key: 'practical_impact', weight: 0.25 },
+      { name: 'Polish & Presentation', key: 'polish_presentation', weight: 0.2 },
+    ];
+
+    let rubricCriteria = defaultRubric;
+    if (event) {
+      const rubricDoc = await Rubric.findOne({ eventId: event._id });
+      if (rubricDoc?.criteria?.length > 0) {
+        rubricCriteria = rubricDoc.criteria.map((c) => ({
+          name: c.label || c.key,
+          key: c.key,
+          weight: c.weight,
+        }));
+      } else if (event.rubric?.length > 0) {
+        rubricCriteria = event.rubric.map((c) => ({
+          name: c.name,
+          key: c.key || c.name,
+          weight: c.weight,
+        }));
+      }
+    }
+
+    // Default auto-eval score: median (5.0) — valid 0.5-step value
+    const AUTO_SCORE = 5.0;
+
+    // Find all pending/assigned queue items for this judge
+    const assignments = await JudgeAssignment.find({
+      $or: [{ judgeId: userId }, { judge: userId }],
+      status: { $nin: ['completed'] },
+    }).populate({ path: 'submissionId', select: 'title track status' });
+
+    if (!assignments.length) {
+      return res.status(200).json({
+        success: true,
+        message: 'No pending assignments to evaluate.',
+        data: { evaluated: 0, skipped: 0 },
+      });
+    }
+
+    let evaluated = 0;
+    let skipped = 0;
+    const ipHash = crypto.createHash('sha256').update(req.ip || '127.0.0.1').digest('hex');
+
+    for (const assignment of assignments) {
+      const sub = assignment.submissionId || assignment.submission;
+      if (!sub) { skipped++; continue; }
+      const subId = sub._id || sub;
+
+      // Skip if already has a final score
+      const existing = await Score.findOne({
+        $and: [
+          { $or: [{ judge: userId }, { judgeId: userId }] },
+          { $or: [{ submission: subId }, { submissionId: subId }] },
+          { isFinal: true },
+        ],
+      });
+      if (existing) { skipped++; continue; }
+
+      // Build criteria score payload
+      const criteriaScores = rubricCriteria.map((crit) => ({
+        key: crit.key || crit.name,
+        criteriaName: crit.name,
+        rawScore: AUTO_SCORE,
+        score: AUTO_SCORE,
+        weight: crit.weight,
+      }));
+
+      // Compute composite
+      let totalWeightedScore = 0;
+      let totalWeight = 0;
+      criteriaScores.forEach((c) => {
+        totalWeightedScore += c.rawScore * c.weight;
+        totalWeight += c.weight;
+      });
+      const rawCompositeScore = Number(
+        (Math.abs(totalWeight - 1.0) < 1e-5
+          ? totalWeightedScore
+          : totalWeightedScore / (totalWeight || 1)
+        ).toFixed(3)
+      );
+
+      // Upsert score
+      await Score.findOneAndUpdate(
+        { $and: [{ $or: [{ judge: userId }, { judgeId: userId }] }, { $or: [{ submission: subId }, { submissionId: subId }] }] },
+        {
+          judge: userId,
+          judgeId: userId,
+          submission: subId,
+          submissionId: subId,
+          criteriaScores,
+          rawCompositeScore,
+          totalRawScore: rawCompositeScore,
+          privateNotes: '[Auto-evaluated by judging engine]',
+          isFinal: true,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      // Mark assignment completed
+      await JudgeAssignment.findByIdAndUpdate(assignment._id, { status: 'completed' });
+
+      // Audit log
+      await AuditLog.create({
+        actorId: userId,
+        actorRole: req.user.role,
+        action: 'AUTO_SCORE_SUBMITTED',
+        targetResource: 'Score',
+        resourceId: subId,
+        payload: { submissionId: subId, rawCompositeScore, autoEvaluated: true },
+        ipHash,
+      });
+
+      evaluated++;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Auto-evaluation complete: ${evaluated} submission(s) scored, ${skipped} skipped.`,
+      data: { evaluated, skipped },
     });
   } catch (error) {
     next(error);

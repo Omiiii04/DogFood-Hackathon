@@ -35,9 +35,15 @@ export const ProjectorDisplay = () => {
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
-        const res = await api.get('/admin/stats');
-        if (res.success && res.data.leaderboard) {
-          setLeaderboard(res.data.leaderboard);
+        let res = null;
+        try {
+          res = await api.get('/submissions/leaderboard');
+        } catch (_) {
+          res = await api.get('/admin/stats');
+        }
+        if (res && res.success) {
+          const lb = res.data?.leaderboard || res.data?.standings || [];
+          setLeaderboard(lb);
         }
       } catch (err) {
         console.error('Failed to load leaderboard', err);

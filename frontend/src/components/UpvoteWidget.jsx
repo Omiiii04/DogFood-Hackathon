@@ -5,6 +5,7 @@ import { useNotification } from '../context/NotificationContext';
 
 export const UpvoteWidget = ({ submission, size = 'sm' }) => {
   const [votes, setVotes] = useState(submission.publicVoteCount || 0);
+  const [voted, setVoted] = useState(false);
   const [isVoting, setIsVoting] = useState(false);
   const { addNotification } = useNotification();
 
@@ -13,6 +14,7 @@ export const UpvoteWidget = ({ submission, size = 'sm' }) => {
     if (isVoting) return;
 
     setIsVoting(true);
+    setVoted(true);
     setVotes((prev) => prev + 1);
 
     try {
@@ -22,6 +24,7 @@ export const UpvoteWidget = ({ submission, size = 'sm' }) => {
       }
     } catch (err) {
       setVotes((prev) => prev - 1);
+      setVoted(false);
       addNotification(err.message, 'error');
     } finally {
       setIsVoting(false);
@@ -34,11 +37,23 @@ export const UpvoteWidget = ({ submission, size = 'sm' }) => {
     <button
       onClick={handleVote}
       disabled={isVoting}
-      className={`flex items-center space-x-1.5 rounded-lg bg-surface-raised border border-border-subtle text-gray-300 hover:text-rose-400 hover:border-rose-800/60 active:scale-95 transition-all ${isLg ? 'px-4 py-2 shadow-glow' : 'px-3 py-1.5'
-        }`}
+      className={`flex items-center gap-1.5 rounded-lg transition-all active:scale-90 disabled:opacity-60
+        ${isLg
+          ? 'px-4 py-2 bg-[#1a1f2e] border border-[#2a3550] hover:border-rose-800/60 hover:bg-rose-950/20 shadow-md'
+          : 'px-3 py-1.5 bg-[#141927] border border-[#1e2d4a] hover:border-rose-700/50 hover:bg-rose-950/20'
+        }
+        ${voted ? 'border-rose-700/60' : ''}
+      `}
     >
-      <Heart className={`${isLg ? 'w-4 h-4' : 'w-3.5 h-3.5'} ${votes > 0 ? 'text-rose-500 fill-rose-500' : ''}`} />
-      <span className={`font-mono font-bold ${isLg ? 'text-sm' : 'text-xs'}`}>{votes}</span>
+      <Heart
+        className={`${isLg ? 'w-4 h-4' : 'w-3.5 h-3.5'} transition-colors ${
+          voted || votes > 0 ? 'text-rose-500 fill-rose-500' : 'text-slate-400'
+        }`}
+      />
+      <span className={`font-mono font-bold ${isLg ? 'text-sm text-white' : 'text-xs text-slate-300'}`}>
+        {votes}
+      </span>
     </button>
   );
 };
+
