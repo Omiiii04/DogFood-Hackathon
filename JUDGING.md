@@ -722,7 +722,7 @@ Implemented in [anomaly_detector.py](file:///c:/Users/Admin/Documents/GitHub/Dog
 
 ### 15.2 Single-Submission Anomaly Detector (`detect_voting_anomalies`)
 
-Implemented in [anomaly_detector.py](file:///c:/Users/Admin/Documents/GitHub/DogFood-Hackathon/judging-service/app/algorithms/anomaly_detector.py) and routed internally via `POST /api/v1/detect-anomaly`:
+Implemented in [anomaly_detector.py](file:///c:/Users/Admin/Documents/GitHub/DogFood-Hackathon/judging-service/app/algorithms/anomaly_detector.py) as a standalone algorithmic analysis utility (intentionally unmounted from the production API router; tests explicitly verify `/api/v1/detect-anomaly` is not exposed):
 
 1. **Fixed Velocity Threshold**: Evaluates whether peak votes in a 60-second window reach or exceed `velocity_threshold` (default $15$ votes):
    $$\text{is\_velocity\_anomalous} = (\text{peak\_velocity} \ge 15)$$
@@ -959,8 +959,8 @@ Ensure all four containers (`dogfood-mongodb`, `dogfood-judging`, `dogfood-api`,
 # Check Node Express API health
 curl -s http://localhost:5000/api/v1/health
 
-# Check Python FastAPI judging microservice health
-curl -s http://localhost:8000/health
+# Check Python FastAPI judging microservice health (internal Docker network; or localhost:8000 in bare-metal host dev)
+docker compose exec judging-service python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read().decode())"
 ```
 
 #### Step 3: Login as Tournament Organizer

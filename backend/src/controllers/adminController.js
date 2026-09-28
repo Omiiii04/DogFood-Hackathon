@@ -395,7 +395,7 @@ exports.getLeaderboard = async (req, res, next) => {
  */
 const buildExportStandingsData = async (eventId) => {
   const submissionFilter = { status: { $in: ['submitted', 'locked'] } };
-  if (eventId && eventId !== 'all') {
+  if (eventId && eventId !== 'all' && mongoose.Types.ObjectId.isValid(eventId)) {
     submissionFilter.$or = [{ event: eventId }, { eventId: eventId }];
   }
 
@@ -755,7 +755,6 @@ exports.getAuditLogs = async (req, res, next) => {
     const [logs, total] = await Promise.all([
       AuditLog.find(filter)
         .populate('actor', 'name fullName email role')
-        .populate('actorId', 'name fullName email role')
         .sort({ timestamp: -1 })
         .skip(skip)
         .limit(limitNum)

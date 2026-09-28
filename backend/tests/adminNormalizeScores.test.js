@@ -398,13 +398,11 @@ describe('Admin Controller - POST /api/v1/admin/normalize-scores Endpoint', () =
         zScore: 1.1,
       };
 
-      jest.spyOn(Submission, 'find').mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          populate: jest.fn().mockReturnValue({
-            lean: jest.fn().mockResolvedValue([mockSub]),
-          }),
-        }),
-      });
+      const mockQuery = {
+        populate: jest.fn().mockImplementation(() => mockQuery),
+        lean: jest.fn().mockResolvedValue([mockSub]),
+      };
+      jest.spyOn(Submission, 'find').mockReturnValue(mockQuery);
       jest.spyOn(Score, 'find').mockReturnValue({
         lean: jest.fn().mockResolvedValue([mockScore]),
       });
@@ -454,13 +452,11 @@ describe('Admin Controller - POST /api/v1/admin/normalize-scores Endpoint', () =
         zScore: 0,
       };
 
-      jest.spyOn(Submission, 'find').mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          populate: jest.fn().mockReturnValue({
-            lean: jest.fn().mockResolvedValue([mockSub]),
-          }),
-        }),
-      });
+      const mockQuery = {
+        populate: jest.fn().mockImplementation(() => mockQuery),
+        lean: jest.fn().mockResolvedValue([mockSub]),
+      };
+      jest.spyOn(Submission, 'find').mockReturnValue(mockQuery);
       jest.spyOn(Score, 'find').mockReturnValue({
         lean: jest.fn().mockResolvedValue([mockScore]),
       });
@@ -490,13 +486,11 @@ describe('Admin Controller - POST /api/v1/admin/normalize-scores Endpoint', () =
     });
 
     it('should return HTTP 200 with leaderboard, isFallback, and algorithm over GET route', async () => {
-      jest.spyOn(Submission, 'find').mockReturnValue({
-        populate: jest.fn().mockReturnValue({
-          populate: jest.fn().mockReturnValue({
-            lean: jest.fn().mockResolvedValue([]),
-          }),
-        }),
-      });
+      const mockQuery = {
+        populate: jest.fn().mockImplementation(() => mockQuery),
+        lean: jest.fn().mockResolvedValue([]),
+      };
+      jest.spyOn(Submission, 'find').mockReturnValue(mockQuery);
       jest.spyOn(Score, 'find').mockReturnValue({
         lean: jest.fn().mockResolvedValue([]),
       });

@@ -452,6 +452,16 @@ Known Limitations
   a freshly created scoreboard dataset.
 - The verification therefore relied on direct schema-validated algorithmic requests and
   the real Docker service topology rather than a synthetic DB insertion path.
+- E2E Verification Harness & Air-Gap Scope:
+  The 23-step end-to-end verification harness (exercising service health, user authentication,
+  team formation, draft submission, submission locking, gallery search, judge assignment, score
+  isolation, normalization, audit logs, RFC 4180 CSV export, community voting, and pairwise comparison
+  recording) was executed as a local verification artifact outside the Git repository. The documented
+  API and Docker commands remain the repository-level reproducible verification procedures.
+  In Step 23 of the harness, GET /api/v1/health validates API service health and runtime readiness;
+  the returned 'airGapped: true' JSON field is descriptive application configuration metadata only,
+  NOT proof of network isolation. Dedicated egress verification (Phase 6 outbound DNS/TCP probe testing)
+  remains the definitive evidence for tested network blocking.
 
 Final PASS/FAIL
 --------------------------------------------------------------------------------

@@ -302,7 +302,8 @@ All platform API endpoints are mounted under `/api/v1`:
 | `POST` | `/api/v1/judge-diagnostics` | Statistical judge profiling: severity classification (Strict, Balanced, Lenient) and standard error of the mean (SEM) |
 | `POST` | `/api/v1/pairwise-rank` | Minorize-Maximization (MM) Bradley-Terry preference ranking over connected comparison graphs |
 | `POST` | `/api/v1/voting-anomalies` | Tournament-wide voting anomaly detector: 3-sigma velocity threshold and User-Agent Shannon entropy |
-| `POST` | `/api/v1/detect-anomaly` | Single-submission anomaly detector: 15-vote velocity bursts and timestamp interval periodicity |
+
+*(Note: The single-submission anomaly detector `detect_voting_anomalies()` in `app/algorithms/anomaly_detector.py` is a standalone internal utility and is intentionally unmounted from the production API router; tests explicitly verify `/api/v1/detect-anomaly` returns 404).*
 
 ---
 

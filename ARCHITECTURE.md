@@ -247,7 +247,7 @@ Two distinct analytical functions exist in `judging-service/app/algorithms/anoma
    - Computes Shannon entropy of submitted User-Agent strings. Flags low entropy $H_{norm} \le 0.2$ with $\ge 2$ votes (`low_user_agent_entropy`).
    - Assigns a calculated risk score: $\min(1.0, 0.5 \times \text{number of flags})$.
 2. **Single-Submission Anomaly Detector (`detect_voting_anomalies`)**:
-   - Exposed on `POST /api/v1/detect-anomaly`.
+   - Implemented as a standalone analysis utility in `anomaly_detector.py` (intentionally unmounted from the production API router; tests explicitly verify `/api/v1/detect-anomaly` is not exposed).
    - Accepts timestamp sequence for an individual submission.
    - Evaluates peak 60-second window velocity against fixed threshold ($\ge 15$ votes/min).
    - Computes inter-arrival intervals $\Delta t$ and Shannon entropy across discretized histogram bins. Flags unnatural periodicity if $H < 0.2$ over $>10$ intervals.
@@ -422,8 +422,8 @@ The startup order is governed by Docker healthchecks:
                       v                         v
                    +-----------------------------------+
                    |            dogfood-api            |
-                   | GET http://127.0.0.1:5000/health  |
-                   +-----------------------------------+
+                   | GET http://127.0.0.1:5000/api/v1/health |
+                   +-----------------------------------------+
                                      |
                                      | depends_on: service_healthy
                                      v
