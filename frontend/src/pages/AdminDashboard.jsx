@@ -4,6 +4,7 @@ import { ScoreDistributionChart } from '../components/ScoreDistributionChart';
 import { JudgeVarianceChart } from '../components/JudgeVarianceChart';
 import { AuditLogViewer } from '../components/AuditLogViewer';
 import { RubricDesigner } from '../components/RubricDesigner';
+import { JudgeAssignmentManager } from '../components/JudgeAssignmentManager';
 import { useNotification } from '../context/NotificationContext';
 import api from '../services/api';
 import {
@@ -52,24 +53,6 @@ export const AdminDashboard = () => {
   useEffect(() => {
     fetchAdminData();
   }, []);
-
-  const handleAssignJudges = async () => {
-    if (!window.confirm('Execute automated greedy judge assignment across all submitted projects?')) {
-      return;
-    }
-    setAssigning(true);
-    try {
-      const res = await api.post('/admin/assign-judges', { targetPerProject: 3 });
-      if (res.success) {
-        addNotification(`Successfully created ${res.data.totalAssigned} judge assignments!`, 'success');
-        fetchAdminData();
-      }
-    } catch (err) {
-      addNotification(err.message, 'error');
-    } finally {
-      setAssigning(false);
-    }
-  };
 
   const handleRunNormalization = async () => {
     setNormalizing(true);
@@ -132,15 +115,6 @@ export const AdminDashboard = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleAssignJudges}
-            disabled={assigning}
-            className="px-4 py-2.5 rounded-xl bg-surface-raised hover:bg-surface border border-border-subtle text-white font-semibold text-xs flex items-center space-x-2 transition-all disabled:opacity-50"
-          >
-            <Users className="w-4 h-4 text-purple-400" />
-            <span>{assigning ? 'Assigning...' : 'Auto-Assign Judges'}</span>
-          </button>
-
           <button
             onClick={handleExportCSV}
             className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-glow flex items-center space-x-2 transition-all"
@@ -216,6 +190,9 @@ export const AdminDashboard = () => {
           <JudgeVarianceChart judgeStats={stats?.judgeStats || []} />
         </div>
       </div>
+
+      {/* Judge Assignment Management */}
+      <JudgeAssignmentManager onAssignmentsUpdated={fetchAdminData} />
 
       {/* Rubric Designer */}
       <RubricDesigner />
